@@ -133,16 +133,16 @@ class TelegramBotListener:
 
         elif cb_data == "CMD_STATUS":
             toast_text = "⚡ Real-time Telemetry Loaded"
-            await self._send_status_reply(target_chat)
             if cb_id:
                 await self._answer_callback(cb_id, toast_text)
+            await self._send_status_reply(target_chat)
             return
 
         elif cb_data == "CMD_JOURNAL":
             toast_text = "📖 Loading Daily Journal..."
-            await self._send_journal_reply(target_chat)
             if cb_id:
                 await self._answer_callback(cb_id, toast_text)
+            await self._send_journal_reply(target_chat)
             return
 
         if cb_id:
@@ -153,9 +153,10 @@ class TelegramBotListener:
 
     async def _send_journal_reply(self, chat_id: str):
         """Sends daily trade performance recap directly to Telegram."""
-        from journal.trade_journal import TradeJournalEngine
-        report = TradeJournalEngine.generate_telegram_markdown()
-        await self._send_reply(report, chat_id)
+        from journal.trade_journal import TradeJournal
+        journal = TradeJournal(self.trade_manager.db)
+        markdown_report = journal.get_telegram_summary_markdown()
+        await self._send_reply(markdown_report, chat_id)
 
     async def _answer_callback(self, cb_id: str, text: str):
         """Sends instant popup toast to user's phone on button tap."""
@@ -166,16 +167,16 @@ class TelegramBotListener:
             logger.warning(f"Error answering callback query: {e}")
 
     async def _fetch_live_tickers(self) -> dict[str, float]:
-        """Fetches live mark/close prices for BTCUSD, ETHUSD, SOLUSD directly from Delta Exchange."""
+        """Fetches fresh ticker data from Delta REST as dynamic fallback."""
         live_prices = {}
         try:
-            url = "https://api.india.delta.exchange/v2/tickers"
-            res = await self.client.get(url, timeout=3.0)
+            res = await self.client.get(f"{settings.DELTA_REST_URL}/v2/tickers", timeout=3.0)
             if res.status_code == 200:
-                for item in res.json().get("result", []):
+                data = res.json().get("result", [])
+                for item in data:
                     sym = item.get("symbol")
                     if sym in settings.SYMBOLS:
-                        close_p = float(item.get("close") or item.get("mark_price") or 0.0)
+                        close_p = float(item.get("close", 0.0) or item.get("mark_price", 0.0))
                         if close_p > 0:
                             live_prices[sym] = close_p
         except Exception as e:
@@ -192,7 +193,8 @@ class TelegramBotListener:
     async def _fetch_coin_analysis(self, symbol: str) -> dict[str, Any]:
         """Fetches coin-specific structural analysis from local server."""
         try:
-            res = await self.client.get(f"http://127.0.0.1:8800/api/analysis/{symbol}", timeout=3.0)
+            port = settings.SERVER_PORT
+            res = await self.client.get(f"http://127.0.0.1:{port}/api/analysis/{symbol}", timeout=0.8)
             if res.status_code == 200:
                 return res.json()
         except Exception:
@@ -291,9 +293,15 @@ class TelegramBotListener:
         lines.append("🧠 *INSTITUTIONAL THINKING ENGINE (ALL MARKETS)*:")
         lines.append("")
 
+        analyses = await asyncio.gather(
+            *(self._fetch_coin_analysis(s) for s in settings.SYMBOLS),
+            return_exceptions=True
+        )
+        analyses_map = {s: (a if isinstance(a, dict) else {}) for s, a in zip(settings.SYMBOLS, analyses)}
+
         for sym in settings.SYMBOLS:
             p = live_prices.get(sym, 0.0)
-            analysis = await self._fetch_coin_analysis(sym)
+            analysis = analyses_map.get(sym, {})
             dr = analysis.get("dealing_range", {})
             pos_pct = dr.get("current_position_pct", 0.5) * 100.0 if dr else 50.0
             zone = dr.get("zone", "EQUILIBRIUM") if dr else "EQUILIBRIUM"

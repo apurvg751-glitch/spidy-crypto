@@ -157,6 +157,25 @@ async def background_scanner_loop():
             logger.error(f"Error in background scanner: {e}")
 
 
+async def render_keepalive_loop():
+    """Keeps Render cloud free instance from spinning down."""
+    import os
+    import httpx
+    url = os.getenv("RENDER_EXTERNAL_URL")
+    if not url:
+        return
+    logger.info(f"Render cloud keepalive activated for: {url}")
+    while True:
+        try:
+            await asyncio.sleep(600)  # ping every 10 mins
+            async with httpx.AsyncClient() as client:
+                await client.get(f"{url}/api/status", timeout=10.0)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global feed_manager, scan_task
@@ -169,6 +188,7 @@ async def lifespan(app: FastAPI):
     await feed_manager.start()
 
     scan_task = asyncio.create_task(background_scanner_loop())
+    keepalive_task = asyncio.create_task(render_keepalive_loop())
 
     from telegram.bot_listener import TelegramBotListener
     bot_listener = TelegramBotListener(trade_manager=trade_manager)
@@ -179,6 +199,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down SPIDY CRYPTO...")
     if scan_task:
         scan_task.cancel()
+    if keepalive_task:
+        keepalive_task.cancel()
     if listener_task:
         listener_task.cancel()
     await bot_listener.close()
