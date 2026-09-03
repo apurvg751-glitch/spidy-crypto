@@ -1,0 +1,18 @@
+﻿# Environment variables
+.env
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Logs
+*.log
+server_out.log
+server_err.log
