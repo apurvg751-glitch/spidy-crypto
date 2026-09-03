@@ -44,7 +44,7 @@ class Settings(BaseModel):
     MIN_SETUP_SCORE: int = 70
 
     # Risk & Structural Stops
-    MIN_RISK_REWARD: float = 1.8
+    MIN_RISK_REWARD: float = 1.6
     TARGET_RR_MEDIUM: float = 1.8
     TARGET_RR_STRONG: float = 2.0
     STOP_BUFFER_ATR: float = 0.25

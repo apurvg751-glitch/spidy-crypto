@@ -505,4 +505,5 @@ class TradeManager:
 
             await self._close_trade(terminal_status, close_price, reason, custom_r=achieved_r, custom_pnl=pnl_inr)
             price_fmt = f"${close_price:,.4f}" if coin == "XRPUSD" else f"${close_price:,.2f}"
+            pnl_sign = "+" if pnl_inr >= 0 else ""
             return True, f"Closed {coin} at {price_fmt} ({pnl_sign}{achieved_r:+.2f}R | {pnl_sign}₹{pnl_inr:,.2f})!"
