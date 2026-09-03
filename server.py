@@ -191,7 +191,7 @@ async def lifespan(app: FastAPI):
     keepalive_task = asyncio.create_task(render_keepalive_loop())
 
     from telegram.bot_listener import TelegramBotListener
-    bot_listener = TelegramBotListener(trade_manager=trade_manager)
+    bot_listener = TelegramBotListener(trade_manager=trade_manager, feed_manager=feed_manager)
     listener_task = asyncio.create_task(bot_listener.start_polling())
 
     yield

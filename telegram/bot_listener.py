@@ -19,12 +19,14 @@ class TelegramBotListener:
         self,
         trade_manager: TradeManager,
         bot_token: Optional[str] = None,
-        chat_id: Optional[str] = None
+        chat_id: Optional[str] = None,
+        feed_manager: Optional[Any] = None
     ):
         self.trade_manager = trade_manager
+        self.feed_manager = feed_manager
         self.bot_token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self.chat_id = chat_id or settings.TELEGRAM_CHAT_ID
-        self.client = httpx.AsyncClient(verify=False, timeout=20.0)
+        self.client = httpx.AsyncClient(verify=False, timeout=30.0)
         self.is_running = False
         self.last_update_id = 0
 
@@ -33,35 +35,35 @@ class TelegramBotListener:
         await self.client.aclose()
 
     async def start_polling(self):
-        """Main polling loop listening for button clicks and messages."""
+        """High-speed Long Polling loop for sub-second button responses."""
         if not self.bot_token:
             logger.info("Telegram Bot Token not configured. Listener disabled.")
             return
 
         self.is_running = True
-        logger.info("Telegram Interactive Button Listener & Thinking Engine started.")
+        logger.info("Telegram High-Speed Long Polling Listener started.")
 
         while self.is_running:
             try:
                 url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
                 params = {
                     "offset": self.last_update_id + 1,
-                    "timeout": 5,
+                    "timeout": 20,
                     "allowed_updates": ["callback_query", "message"]
                 }
-                res = await self.client.get(url, params=params)
+                res = await self.client.get(url, params=params, timeout=25.0)
                 if res.status_code == 200:
                     data = res.json()
                     for update in data.get("result", []):
                         self.last_update_id = max(self.last_update_id, update.get("update_id", 0))
-                        await self._process_update(update)
+                        asyncio.create_task(self._process_update(update))
                 else:
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.warning(f"Telegram polling warning: {e}")
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(1.0)
 
     async def _process_update(self, update: dict):
         """Processes an incoming Telegram update."""
