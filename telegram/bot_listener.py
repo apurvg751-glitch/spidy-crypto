@@ -254,12 +254,12 @@ class TelegramBotListener:
                 lines.append(f"🪙 *ACTIVE TRADE: {coin} ({direction})* {pnl_emoji}")
                 lines.append(f"• Model: *{model}* | Score: *{score}/100*")
                 lines.append(f"• Status: *{status}* {'(BE Locked 🛡️)' if at.get('be_moved') else ''}")
-                lines.append("")
-                lines.append("💵 *LIVE PnL TELEMETRY (DYNAMIC)*:")
-                lines.append(f"• Entry: *${entry:,.2f}* → Live Price: *${current_p:,.2f}*")
-                lines.append(f"• PnL: *{pnl_sign}${price_diff:,.2f} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}")
+                efmt = f"${entry:,.4f}" if coin in ("XRPUSD", "AVAXUSD") else f"${entry:,.2f}"
+                pfmt = f"${current_p:,.4f}" if coin in ("XRPUSD", "AVAXUSD") else f"${current_p:,.2f}"
+                lines.append(f"• Entry: *{efmt}* → Live Delta Price: *{pfmt}*")
+                lines.append(f"• PnL: *{pnl_sign}${price_diff:,.4f} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}" if coin in ("XRPUSD", "AVAXUSD") else f"• PnL: *{pnl_sign}${price_diff:,.2f} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}")
                 lines.append(f"• R-Multiple: *{pnl_sign}{achieved_r:.2f}R*")
-                lines.append(f"• Live Profit (₹{int(margin):,} @ {lev}x): *{pnl_sign}₹{pnl_inr:,.2f}* {pnl_emoji}")
+                lines.append(f"• Live Profit (₹{int(margin):,} Margin @ {lev}x): *{pnl_sign}₹{pnl_inr:,.2f}* {pnl_emoji}")
                 lines.append("")
                 lines.append("🎯 *TARGETS & INVALIDATION*:")
                 lines.append(f"• Stop Loss: *${sl:,.2f}*")
