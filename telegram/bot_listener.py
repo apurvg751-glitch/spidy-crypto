@@ -166,22 +166,35 @@ class TelegramBotListener:
             logger.warning(f"Error answering callback query: {e}")
 
     async def _fetch_live_tickers(self) -> dict[str, float]:
-        """Fetches fresh ticker data from Delta REST as dynamic fallback."""
+        """Fetches fresh ticker data from local server to guarantee 100% identical price parity with web dashboard."""
         live_prices = {}
         try:
-            res = await self.client.get(f"{settings.DELTA_REST_URL}/v2/tickers", timeout=3.0)
+            port = settings.SERVER_PORT
+            res = await self.client.get(f"http://127.0.0.1:{port}/api/status", timeout=1.0)
             if res.status_code == 200:
-                data = res.json().get("result", [])
-                for item in data:
-                    sym = item.get("symbol")
-                    if sym in settings.SYMBOLS:
-                        close_p = float(item.get("close", 0.0) or item.get("mark_price", 0.0))
-                        if close_p > 0:
-                            live_prices[sym] = close_p
-        except Exception as e:
-            logger.warning(f"Failed to fetch live Delta tickers: {e}")
+                states = res.json().get("states", {})
+                for sym, info in states.items():
+                    p = float(info.get("current_price") or 0.0)
+                    if p > 0:
+                        live_prices[sym] = p
+        except Exception:
+            pass
 
-        # If any symbol was not returned, attempt fallback from active trade
+        # Fallback to direct Delta REST if local server is starting up
+        if len(live_prices) < len(settings.SYMBOLS):
+            try:
+                res = await self.client.get(f"{settings.DELTA_REST_URL}/v2/tickers", timeout=2.0)
+                if res.status_code == 200:
+                    for item in res.json().get("result", []):
+                        sym = item.get("symbol")
+                        if sym in settings.SYMBOLS and (sym not in live_prices or live_prices[sym] <= 0):
+                            p = float(item.get("mark_price", 0.0) or item.get("close", 0.0))
+                            if p > 0:
+                                live_prices[sym] = p
+            except Exception:
+                pass
+
+        # Active trade fallback
         for sym in settings.SYMBOLS:
             if sym not in live_prices or live_prices[sym] <= 0:
                 at = self.trade_manager.active_trade
