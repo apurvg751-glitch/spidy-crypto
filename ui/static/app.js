@@ -1,0 +1,801 @@
+// SPIDY CRYPTO Reactive Client HUD Engine (Multi-Coin Reactive System)
+let ws = null;
+let currentSymbol = "ETHUSD";
+let currentResolution = "5m";
+let currentCandles = [];
+let activeTrade = null;
+let marketStates = {};
+let coinAnalysisData = {};
+let selectedModelId = "MODEL_7";
+
+document.addEventListener("DOMContentLoaded", () => {
+    initWebSocket();
+    fetchStatus();
+    
+    // Initial selection
+    selectSymbol("ETHUSD");
+
+    // Market card coin selector
+    document.querySelectorAll(".market-card").forEach(card => {
+        card.addEventListener("click", () => {
+            const sym = card.dataset.symbol;
+            if (sym) {
+                selectSymbol(sym);
+            }
+        });
+    });
+
+    // Timeframe selector buttons
+    document.querySelectorAll(".tf-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".tf-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            currentResolution = btn.dataset.tf;
+            document.getElementById("chart-symbol-label").textContent = `${currentSymbol} • ${currentResolution.toUpperCase()} CHART`;
+            loadCandles(currentSymbol, currentResolution);
+        });
+    });
+
+    // Operational action buttons
+    const btnScan = document.getElementById("btn-scan");
+    if (btnScan) btnScan.addEventListener("click", triggerScan);
+
+    const btnBacktest = document.getElementById("btn-backtest");
+    if (btnBacktest) btnBacktest.addEventListener("click", runBacktest);
+
+    const btnValidate = document.getElementById("btn-validate");
+    if (btnValidate) btnValidate.addEventListener("click", runValidation);
+
+    const btnLong = document.getElementById("btn-sim-long");
+    if (btnLong) btnLong.addEventListener("click", () => simulateSetup("LONG"));
+
+    const btnShort = document.getElementById("btn-sim-short");
+    if (btnShort) btnShort.addEventListener("click", () => simulateSetup("SHORT"));
+
+    const btnRelease = document.getElementById("btn-release-lock");
+    if (btnRelease) btnRelease.addEventListener("click", releaseActiveTradeLock);
+
+    // Polling fallback to ensure connection is always resilient
+    setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            fetchStatus();
+        }
+    }, 3000);
+});
+
+function selectSymbol(sym) {
+    currentSymbol = sym;
+
+    // 1. Instantly highlight active card
+    document.querySelectorAll(".market-card").forEach(c => {
+        c.classList.toggle("selected", c.dataset.symbol === sym);
+    });
+
+    // 2. Instantly update tactical panel header and labels
+    const coinBadge = document.getElementById("trade-badge-coin");
+    if (coinBadge) coinBadge.textContent = sym;
+
+    const chartLabel = document.getElementById("chart-symbol-label");
+    if (chartLabel) chartLabel.textContent = `${sym} • ${currentResolution.toUpperCase()} CHART`;
+
+    // 3. Update price levels locally ONLY if there is an active trade on this coin
+    if (activeTrade && activeTrade.coin === sym && (activeTrade.trade_status === "ACTIVE" || activeTrade.trade_status === "WAITING")) {
+        const dec = sym === "XRPUSD" ? 4 : 2;
+        document.getElementById("val-entry").textContent = Number(activeTrade.entry).toFixed(dec);
+        document.getElementById("val-stop").textContent = Number(activeTrade.stop_loss).toFixed(dec);
+        document.getElementById("val-t1").textContent = Number(activeTrade.target_1).toFixed(dec);
+        document.getElementById("val-t2").textContent = Number(activeTrade.target_2).toFixed(dec);
+        document.getElementById("val-margin").textContent = `₹${activeTrade.margin_used || 250}`;
+
+        const dirBadge = document.getElementById("trade-direction-badge");
+        if (dirBadge) {
+            dirBadge.textContent = activeTrade.direction;
+            dirBadge.className = `direction-badge ${activeTrade.direction}`;
+        }
+    } else {
+        document.getElementById("val-entry").textContent = "--";
+        document.getElementById("val-stop").textContent = "--";
+        document.getElementById("val-t1").textContent = "--";
+        document.getElementById("val-t2").textContent = "--";
+        document.getElementById("val-margin").textContent = "Idle (₹35,000 @ 1x)";
+
+        const m = marketStates[sym];
+        const dirBadge = document.getElementById("trade-direction-badge");
+        if (dirBadge) {
+            const isBull = (m && m.mtf_context && m.mtf_context.exec_context_15m === "Bullish");
+            dirBadge.textContent = isBull ? "BULLISH BIAS" : "BEARISH BIAS";
+            dirBadge.className = `direction-badge ${isBull ? 'LONG' : 'SHORT'}`;
+        }
+    }
+
+    // 4. Fetch candles and full deep SMC server analysis
+    loadCandles(sym, currentResolution);
+    fetchCoinAnalysis(sym);
+
+    // 5. If backtest was executed, refresh highlight for selected coin
+    if (lastBacktestByMarket && lastBacktestByMarket[sym]) {
+        const bm = lastBacktestByMarket[sym];
+        const bmColor = bm.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+        const box = document.getElementById("backtest-summary-box");
+        const content = document.getElementById("backtest-summary-content");
+        if (box && content && box.style.display !== "none") {
+            let html = `
+                <div style="font-size:12px; margin-bottom:4px;">
+                    <strong style="color:var(--cyan-neon);">[ ${sym} BACKTEST ]:</strong>
+                    Trades: <strong>${bm.trades}</strong> | 
+                    Win Rate: <strong style="color:var(--emerald-neon)">${bm.win_rate}%</strong> | 
+                    Total Gain: <strong style="color:${bmColor}">${bm.total_r > 0 ? '+' : ''}${bm.total_r}R</strong> | 
+                    Profit Factor: <strong>${bm.profit_factor}</strong>
+                </div>
+            `;
+            html += `<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:12px; font-size:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">`;
+            for (const [s, b] of Object.entries(lastBacktestByMarket)) {
+                const c = b.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+                const isSel = s === sym;
+                html += `
+                    <div style="${isSel ? 'background:rgba(0,240,255,0.15); padding:2px 6px; border-radius:4px; border:1px solid var(--cyan-neon);' : ''}">
+                        <strong style="color:${isSel ? 'var(--cyan-neon)' : '#fff'};">${s}:</strong> 
+                        ${b.trades} trds | 
+                        WR: <strong style="color:var(--emerald-neon);">${b.win_rate}%</strong> | 
+                        Gain: <strong style="color:${c};">${b.total_r > 0 ? '+' : ''}${b.total_r}R</strong> | 
+                        PF: ${b.profit_factor}
+                    </div>
+                `;
+            }
+            html += `</div>`;
+            content.innerHTML = html;
+        }
+    }
+}
+
+function initWebSocket() {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+    try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            document.getElementById("ws-status-dot").className = "status-dot green";
+            document.getElementById("ws-status-text").textContent = "STREAM LIVE";
+        };
+
+        ws.onclose = () => {
+            document.getElementById("ws-status-dot").className = "status-dot rose";
+            document.getElementById("ws-status-text").textContent = "RECONNECTING";
+            setTimeout(initWebSocket, 2000);
+        };
+
+        ws.onerror = () => {
+            try { ws.close(); } catch(e) {}
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleWsMessage(data);
+            } catch (e) {
+                console.error("WS parse error", e);
+            }
+        };
+    } catch (e) {
+        console.error("WebSocket init error", e);
+        setTimeout(initWebSocket, 3000);
+    }
+}
+
+function handleWsMessage(msg) {
+    if (msg.type === "STATUS_UPDATE" || msg.type === "INITIAL_STATE") {
+        updateHUD(msg.data);
+    } else if (msg.type === "PRICE_TICK") {
+        updatePrice(msg.symbol, msg.price);
+    } else if (msg.type === "CANDLE_CLOSED" && msg.symbol === currentSymbol && msg.resolution === currentResolution) {
+        loadCandles(currentSymbol, currentResolution);
+    }
+}
+
+async function fetchStatus() {
+    try {
+        const res = await fetch("/api/status");
+        if (res.ok) {
+            const data = await res.json();
+            updateHUD(data);
+        }
+    } catch (e) {
+        // Fallback quiet
+    }
+}
+
+async function fetchCoinAnalysis(sym) {
+    try {
+        const res = await fetch(`/api/analysis/${sym}`);
+        if (res.ok) {
+            const data = await res.json();
+            coinAnalysisData[sym] = data;
+            renderTacticalPanel(data);
+        }
+    } catch (e) {
+        console.error("Error fetching coin analysis", e);
+    }
+}
+
+async function loadCandles(sym, resParam) {
+    try {
+        const res = await fetch(`/api/candles/${sym}?resolution=${resParam || currentResolution}&limit=40`);
+        if (res.ok) {
+            const data = await res.json();
+            currentCandles = data.candles || [];
+            drawChart();
+        }
+    } catch (e) {
+        console.error("Error fetching candles", e);
+    }
+}
+
+function updateHUD(data) {
+    if (data.markets) {
+        marketStates = data.markets;
+        for (const [sym, m] of Object.entries(data.markets)) {
+            updatePrice(sym, m.current_price, m.is_stale, m.connection_status);
+            if (m.mtf_context) {
+                const el4h = document.getElementById(`mtf-4h-${sym}`);
+                const el1h = document.getElementById(`mtf-1h-${sym}`);
+                const el15 = document.getElementById(`mtf-15m-${sym}`);
+                const el5 = document.getElementById(`mtf-5m-${sym}`);
+                if (el4h) el4h.textContent = `4H: ${m.mtf_context.macro_bias_4h}`;
+                if (el1h) el1h.textContent = `1H: ${m.mtf_context.trend_1h}`;
+                if (el15) el15.textContent = `15M: ${m.mtf_context.exec_context_15m}`;
+                if (el5) el5.textContent = `5M: ${m.mtf_context.struct_5m}`;
+            }
+        }
+    }
+
+    if (data.reentry_status) {
+        for (const [sym, rStat] of Object.entries(data.reentry_status)) {
+            const cardMeta = document.getElementById(`reentry-meta-${sym}`);
+            if (cardMeta) {
+                const rem = rStat.cooldown_remaining_bars || 0;
+                if (rStat.state === "POST_TRADE_COOLDOWN" || rem > 0) {
+                    cardMeta.innerHTML = `<span style="color:var(--amber-neon);">COOLDOWN (${rem} BARS)</span> | <span style="color:#ff3b5c;">BLOCKED</span>`;
+                } else if (rStat.state === "WAITING_FOR_NEW_STRUCTURE") {
+                    cardMeta.innerHTML = `<span style="color:var(--cyan-neon);">WAITING STRUCTURE</span> | <span style="color:#ff3b5c;">BLOCKED</span>`;
+                } else {
+                    cardMeta.innerHTML = `<span style="color:var(--emerald-neon);">READY</span> | <span style="color:var(--emerald-neon);">FRESH</span>`;
+                }
+            }
+
+            if (sym === currentSymbol) {
+                const stateEl = document.getElementById("reentry-state-badge");
+                const cdEl = document.getElementById("reentry-cd-badge");
+                const prevEl = document.getElementById("reentry-prev-setup");
+                const structEl = document.getElementById("reentry-fresh-struct");
+                const eligEl = document.getElementById("reentry-eligibility");
+
+                if (stateEl) {
+                    stateEl.textContent = rStat.state || "READY";
+                    stateEl.style.color = (rStat.state === "POST_TRADE_COOLDOWN" || rStat.state === "WAITING_FOR_NEW_STRUCTURE") ? "var(--amber-neon)" : "var(--emerald-neon)";
+                }
+                if (cdEl) cdEl.textContent = `${rStat.cooldown_remaining_bars || 0} BARS`;
+                if (prevEl) prevEl.textContent = rStat.previous_setup_status || "CONSUMED";
+                if (structEl) {
+                    structEl.textContent = rStat.fresh_structure || "CONFIRMED";
+                    structEl.style.color = (rStat.fresh_structure === "NOT YET") ? "#ff3b5c" : "var(--emerald-neon)";
+                }
+                if (eligEl) {
+                    eligEl.textContent = rStat.trade_eligibility || "READY";
+                    eligEl.style.color = (rStat.trade_eligibility === "BLOCKED") ? "#ff3b5c" : "var(--emerald-neon)";
+                }
+            }
+        }
+    }
+
+    activeTrade = data.active_trade;
+    const lockDot = document.getElementById("lock-status-dot");
+    const lockText = document.getElementById("lock-status-text");
+
+    if (activeTrade && (activeTrade.trade_status === "WAITING" || activeTrade.trade_status === "ACTIVE")) {
+        lockDot.className = "status-dot amber";
+        lockText.textContent = `LOCKED (${activeTrade.coin})`;
+    } else {
+        lockDot.className = "status-dot green";
+        lockText.textContent = "SLOT OPEN (0/1)";
+    }
+
+    // Refresh tactical panel for currently selected coin
+    fetchCoinAnalysis(currentSymbol);
+
+    if (data.model_stats) {
+        renderModelStats(data.model_stats);
+    }
+
+    if (data.history) {
+        renderHistoryTable(data.history);
+    }
+}
+
+function updatePrice(symbol, price, isStale, connStatus) {
+    const priceEl = document.getElementById(`price-${symbol}`);
+    if (priceEl && price > 0) {
+        if (symbol === "XRPUSD") {
+            priceEl.textContent = price.toFixed(4);
+        } else if (price >= 1000) {
+            priceEl.textContent = price.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 2});
+        } else {
+            priceEl.textContent = price.toFixed(2);
+        }
+    }
+    const statusEl = document.getElementById(`status-${symbol}`);
+    if (statusEl) {
+        if (isStale) {
+            statusEl.textContent = "STALE DATA";
+            statusEl.style.color = "var(--rose-neon)";
+        } else {
+            statusEl.textContent = connStatus || "ACTIVE";
+            statusEl.style.color = "var(--emerald-neon)";
+        }
+    }
+    if (symbol === currentSymbol) {
+        drawChart();
+    }
+}
+
+function renderTacticalPanel(data) {
+    if (!data || data.error) return;
+
+    const sym = data.symbol;
+    document.getElementById("trade-badge-coin").textContent = sym;
+
+    const modeEl = document.getElementById("trade-coin-mode");
+    if (data.is_active_trade) {
+        modeEl.textContent = "LOCKED ACTIVE TRADE";
+        modeEl.style.color = "var(--amber-neon)";
+        modeEl.style.borderColor = "var(--amber-neon)";
+        modeEl.style.background = "rgba(245, 158, 11, 0.15)";
+    } else {
+        modeEl.textContent = "LIVE COIN ANALYSIS";
+        modeEl.style.color = "var(--cyan-neon)";
+        modeEl.style.borderColor = "var(--cyan-neon)";
+        modeEl.style.background = "rgba(0, 240, 255, 0.15)";
+    }
+
+    // Direction & Status
+    const dirEl = document.getElementById("trade-direction-badge");
+    dirEl.textContent = data.direction;
+    dirEl.className = `direction-badge ${data.direction}`;
+
+    const stEl = document.getElementById("trade-status-badge");
+    stEl.textContent = data.status;
+
+    document.getElementById("trade-model-badge").textContent = data.model_name;
+
+    // Confirmations & Score
+    document.getElementById("conf-badge-pill").textContent = `CONFIRMATIONS: ${data.confirmations_count}/7`;
+    document.getElementById("score-number").textContent = data.score;
+
+    // Grade & Policy Badges
+    const gradeBadge = document.getElementById("trade-grade-badge");
+    if (gradeBadge) {
+        const gr = data.grade || "A+";
+        gradeBadge.textContent = gr === "A+" ? "🌟 GRADE: A+" : "⚡ GRADE: B+";
+        gradeBadge.style.color = gr === "A+" ? "var(--emerald-neon)" : "var(--amber-neon)";
+        gradeBadge.style.borderColor = gr === "A+" ? "rgba(0,255,163,0.4)" : "rgba(245,158,11,0.4)";
+        gradeBadge.style.background = gr === "A+" ? "rgba(0,255,163,0.15)" : "rgba(245,158,11,0.15)";
+    }
+
+    const policyBadge = document.getElementById("trade-policy-badge");
+    if (policyBadge) {
+        policyBadge.textContent = data.policy || (data.grade === "B+" ? "Strict Risk (Tight SL / Quick 1.4R TP)" : "Institutional Conviction");
+    }
+
+    // Dealing Range (Premium vs Discount) & Displacement
+    if (data.dealing_range) {
+        const dr = data.dealing_range;
+        const rangeEl = document.getElementById("val-range-span");
+        if (rangeEl) rangeEl.textContent = `[${dr.range_low.toFixed(1)} - ${dr.range_high.toFixed(1)}]`;
+
+        const eqEl = document.getElementById("val-eq-price");
+        if (eqEl) eqEl.textContent = dr.equilibrium.toFixed(1);
+
+        const pdEl = document.getElementById("val-pd-zone");
+        if (pdEl) {
+            pdEl.textContent = `${dr.zone} (${(dr.current_position_pct * 100).toFixed(0)}%)`;
+            pdEl.style.color = dr.zone.includes("DISCOUNT") ? "var(--emerald-neon)" : (dr.zone.includes("PREMIUM") ? "var(--rose-neon)" : "var(--cyan-neon)");
+        }
+    }
+
+    if (data.displacement) {
+        const dispEl = document.getElementById("val-displacement");
+        if (dispEl) {
+            dispEl.textContent = data.displacement.detected ? `DETECTED (${(data.displacement.body_ratio * 100).toFixed(0)}% body, ${data.displacement.expansion_ratio}x)` : "Normal";
+            dispEl.style.color = data.displacement.detected ? "var(--emerald-neon)" : "var(--text-muted)";
+        }
+    }
+
+    // Dynamic Levels tailored to this coin: ONLY when active trade is open!
+    if (data.is_active_trade && data.levels) {
+        const dec = sym === "XRPUSD" ? 4 : 2;
+        document.getElementById("val-entry").textContent = Number(data.levels.entry).toFixed(dec);
+        document.getElementById("val-stop").textContent = Number(data.levels.stop_loss).toFixed(dec);
+        document.getElementById("val-t1").textContent = Number(data.levels.target_1).toFixed(dec);
+        document.getElementById("val-t2").textContent = Number(data.levels.target_2).toFixed(dec);
+        document.getElementById("val-margin").textContent = data.levels.margin || "₹250 Cap";
+    } else {
+        document.getElementById("val-entry").textContent = "--";
+        document.getElementById("val-stop").textContent = "--";
+        document.getElementById("val-t1").textContent = "--";
+        document.getElementById("val-t2").textContent = "--";
+        document.getElementById("val-margin").textContent = "Idle (₹35,000 @ 1x)";
+    }
+
+    // Dynamic Progression Bar (reflects exact progression of this coin!)
+    const progContainer = document.getElementById("progression-bar");
+    if (progContainer && data.progression_steps) {
+        progContainer.innerHTML = "";
+        data.progression_steps.forEach((step, idx) => {
+            const stepDiv = document.createElement("div");
+            let cls = "prog-step";
+            if (step.passed) {
+                cls += " passed";
+            } else if (idx === 0 || (data.progression_steps[idx - 1] && data.progression_steps[idx - 1].passed)) {
+                cls += " active";
+            }
+            stepDiv.className = cls;
+            stepDiv.textContent = step.label;
+            stepDiv.title = step.desc || "";
+            progContainer.appendChild(stepDiv);
+
+            if (idx < data.progression_steps.length - 1) {
+                const arrow = document.createElement("span");
+                arrow.className = "prog-arrow";
+                arrow.textContent = "▶";
+                progContainer.appendChild(arrow);
+            }
+        });
+    }
+
+    // Setup Reasoning
+    const reasonsContainer = document.getElementById("reasoning-container");
+    reasonsContainer.innerHTML = "";
+    if (data.reasons && Array.isArray(data.reasons)) {
+        data.reasons.forEach(r => {
+            const div = document.createElement("div");
+            div.className = "reason-item";
+            div.innerHTML = `<span class="highlight">▶</span> ${r}`;
+            reasonsContainer.appendChild(div);
+        });
+    }
+
+    drawChart();
+}
+
+function renderModelStats(stats) {
+    const tbody = document.getElementById("model-stats-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    stats.forEach(s => {
+        const tr = document.createElement("tr");
+        const rColor = s.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+        tr.innerHTML = `
+            <td style="font-weight:600; color:#fff;" title="${s.model_name}">${s.model_id}</td>
+            <td>${s.trades_count}</td>
+            <td style="color:${s.win_rate >= 50 ? 'var(--emerald-neon)' : 'var(--amber-neon)'}; font-weight:700;">${s.win_rate}%</td>
+            <td style="color:${rColor}; font-weight:700;">${s.total_r > 0 ? '+' : ''}${s.total_r.toFixed(1)}R</td>
+            <td>${s.profit_factor.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderHistoryTable(items) {
+    const tbody = document.getElementById("history-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+
+    if (!items || items.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:var(--text-muted);">No setups recorded yet.</td></tr>`;
+        return;
+    }
+
+    items.slice(0, 35).forEach(item => {
+        const tr = document.createElement("tr");
+        const dt = new Date(item.detection_timestamp * 1000).toLocaleTimeString();
+
+        let statusBadge = `<span style="color:var(--cyan-neon);">${item.trade_status}</span>`;
+        if (item.trade_status === "BLOCKED BY ACTIVE TRADE") {
+            statusBadge = `<span style="color:var(--amber-neon);">BLOCKED</span>`;
+        } else if (item.trade_status === "COMPLETED" || item.trade_status === "TARGET HIT") {
+            statusBadge = `<span style="color:var(--emerald-neon);">${item.trade_status}</span>`;
+        } else if (item.trade_status === "STOPPED" || item.trade_status === "CANCELLED") {
+            statusBadge = `<span style="color:var(--rose-neon);">${item.trade_status}</span>`;
+        }
+
+        const dirColor = item.direction === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
+        const confText = item.confirmations_count ? `${item.confirmations_count}/7` : "-";
+
+        tr.innerHTML = `
+            <td>${dt}</td>
+            <td style="font-weight:700; color:#fff;">${item.coin}</td>
+            <td style="font-size:11px; color:var(--cyan-neon);">${item.model_id || 'M1'}</td>
+            <td style="color:${dirColor}; font-weight:700;">${item.direction}</td>
+            <td><strong style="color:var(--cyan-neon);">${item.setup_score}</strong>/100</td>
+            <td style="color:var(--purple-neon); font-weight:700;">${confText}</td>
+            <td>${item.entry ? item.entry.toFixed(2) : '-'}</td>
+            <td>${item.stop_loss ? item.stop_loss.toFixed(2) : '-'}</td>
+            <td>1:${item.rr ? item.rr.toFixed(1) : '-'}</td>
+            <td>${statusBadge}</td>
+            <td style="font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${item.rejection_reason || item.final_result || ''}">
+                ${item.rejection_reason || item.final_result || 'Qualified setup'}
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function drawChart() {
+    const canvas = document.getElementById("chart-canvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const w = rect.width;
+    const h = rect.height;
+
+    ctx.clearRect(0, 0, w, h);
+
+    if (!currentCandles || currentCandles.length === 0) {
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.font = "13px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(`Loading ${currentSymbol} ${currentResolution.toUpperCase()} candles...`, w / 2, h / 2);
+        return;
+    }
+
+    const candles = currentCandles.slice(-40);
+    const n = candles.length;
+    let minPrice = Math.min(...candles.map(c => c.low));
+    let maxPrice = Math.max(...candles.map(c => c.high));
+
+    const coinData = coinAnalysisData[currentSymbol];
+    if (coinData && coinData.levels && coinData.is_active_trade) {
+        minPrice = Math.min(minPrice, coinData.levels.stop_loss, coinData.levels.entry);
+        maxPrice = Math.max(maxPrice, coinData.levels.target_2, coinData.levels.entry);
+    }
+
+    const pad = (maxPrice - minPrice) * 0.1 || 1.0;
+    minPrice -= pad;
+    maxPrice += pad;
+    const priceRange = maxPrice - minPrice;
+
+    function getY(p) {
+        return h - ((p - minPrice) / priceRange) * (h - 40) - 20;
+    }
+
+    // Grid lines
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 4; i++) {
+        const y = (h / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+    }
+
+    const candleWidth = Math.max(3, (w - 60) / n - 3);
+
+    candles.forEach((c, idx) => {
+        const x = 30 + idx * ((w - 60) / n);
+        const yOpen = getY(c.open);
+        const yClose = getY(c.close);
+        const yHigh = getY(c.high);
+        const yLow = getY(c.low);
+
+        const isGreen = c.close >= c.open;
+        ctx.strokeStyle = isGreen ? "#10b981" : "#f43f5e";
+        ctx.fillStyle = isGreen ? "#10b981" : "#f43f5e";
+
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(x, yHigh);
+        ctx.lineTo(x, yLow);
+        ctx.stroke();
+
+        const bodyTop = Math.min(yOpen, yClose);
+        const bodyHeight = Math.max(2, Math.abs(yOpen - yClose));
+        ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+    });
+
+    // Draw technical levels ONLY if an active/waiting trade is open on this coin!
+    if (coinData && coinData.levels && coinData.is_active_trade) {
+        const lvls = coinData.levels;
+        const dec = currentSymbol === "XRPUSD" ? 4 : 2;
+        drawHLine(ctx, w, getY(lvls.entry), "#00f0ff", `ENTRY: ${lvls.entry.toFixed(dec)}`);
+        drawHLine(ctx, w, getY(lvls.stop_loss), "#f43f5e", `STOP: ${lvls.stop_loss.toFixed(dec)}`);
+        drawHLine(ctx, w, getY(lvls.target_1), "#10b981", `T1: ${lvls.target_1.toFixed(dec)}`);
+        drawHLine(ctx, w, getY(lvls.target_2), "#34d399", `T2: ${lvls.target_2.toFixed(dec)}`);
+    }
+}
+
+function drawHLine(ctx, w, y, color, label) {
+    ctx.strokeStyle = color;
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(30, y);
+    ctx.lineTo(w - 30, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = color;
+    ctx.font = "10px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(label, w - 35, y - 4);
+}
+
+async function triggerScan() {
+    const btn = document.getElementById("btn-scan");
+    const box = document.getElementById("scan-result-box");
+    const content = document.getElementById("scan-result-content");
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Scanning 9 Models Across Markets...";
+        btn.style.borderColor = "var(--amber-neon)";
+        btn.style.color = "var(--amber-neon)";
+    }
+    if (box) {
+        box.style.display = "block";
+        content.innerHTML = "<em>Querying Delta Exchange live feeds & evaluating 27 model checks...</em>";
+    }
+
+    try {
+        const res = await fetch("/api/trigger_scan", { method: "POST" });
+        const data = await res.json();
+        
+        if (box && data.results) {
+            let html = `<div style="margin-bottom:6px; color:#fff;">${data.message}</div>`;
+            html += `<table style="width:100%; font-size:10px; border-collapse:collapse;">`;
+            data.results.forEach(r => {
+                html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
+                    <td style="font-weight:700; color:var(--cyan-neon); padding:2px 4px;">${r.symbol}:</td>
+                    <td style="color:${r.status.includes('QUALIFIED') ? 'var(--emerald-neon)' : 'var(--text-secondary)'}; padding:2px 4px;">${r.status}</td>
+                    <td style="color:var(--purple-neon); padding:2px 4px;">${r.confirmations}</td>
+                    <td style="color:var(--text-muted); padding:2px 4px;">${r.best_model}</td>
+                </tr>`;
+            });
+            html += `</table>`;
+            content.innerHTML = html;
+        }
+
+        fetchStatus();
+        fetchCoinAnalysis(currentSymbol);
+    } catch (e) {
+        if (content) content.textContent = "Scan error: " + e;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "⚡ Trigger Market Scan (9 Models) ✓";
+            btn.style.borderColor = "var(--cyan-neon)";
+            btn.style.color = "#fff";
+            setTimeout(() => {
+                btn.textContent = "⚡ Trigger Market Scan (9 Models)";
+            }, 2500);
+        }
+    }
+}
+
+async function releaseActiveTradeLock() {
+    if (!confirm("Are you sure you want to command SPIDY to stop and close the active trade?")) {
+        return;
+    }
+    try {
+        const res = await fetch("/api/close_active_trade", { method: "POST" });
+        const data = await res.json();
+        fetchStatus();
+        fetchCoinAnalysis(currentSymbol);
+        alert(data.message || "Active trade lock released.");
+    } catch (e) {
+        console.error("Release lock error", e);
+    }
+}
+
+let lastBacktestByMarket = null;
+
+async function runBacktest() {
+    const box = document.getElementById("backtest-summary-box");
+    const content = document.getElementById("backtest-summary-content");
+    box.style.display = "block";
+    content.innerHTML = `<em>Running event-driven institutional backtest for <strong>${currentSymbol}</strong> & portfolio...</em>`;
+
+    try {
+        const res = await fetch(`/api/backtest/run?symbol=${currentSymbol}`, { method: "POST" });
+        const data = await res.json();
+        if (data.metrics) {
+            const m = data.metrics;
+            lastBacktestByMarket = data.by_market;
+            const rColor = m.total_r_gain >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+
+            let html = `
+                <div style="font-size:12px; margin-bottom:4px;">
+                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} BACKTEST ]:</strong>
+                    Trades: <strong>${m.total_trades}</strong> | 
+                    Win Rate: <strong style="color:var(--emerald-neon)">${m.win_rate}%</strong> | 
+                    Expectancy: <strong>${m.expectancy}R</strong> | 
+                    Profit Factor: <strong>${m.profit_factor}</strong> | 
+                    Total Gain: <strong style="color:${rColor}">${m.total_r_gain > 0 ? '+' : ''}${m.total_r_gain}R</strong> | 
+                    Max DD: <strong>${m.max_drawdown_r}R</strong>
+                </div>
+            `;
+
+            if (data.by_market && Object.keys(data.by_market).length > 0) {
+                html += `<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:12px; font-size:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">`;
+                for (const [sym, bm] of Object.entries(data.by_market)) {
+                    const bmColor = bm.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+                    const isSelected = sym === currentSymbol;
+                    html += `
+                        <div style="${isSelected ? 'background:rgba(0,240,255,0.15); padding:2px 6px; border-radius:4px; border:1px solid var(--cyan-neon);' : ''}">
+                            <strong style="color:${isSelected ? 'var(--cyan-neon)' : '#fff'};">${sym}:</strong> 
+                            ${bm.trades} trds | 
+                            WR: <strong style="color:var(--emerald-neon);">${bm.win_rate}%</strong> | 
+                            Gain: <strong style="color:${bmColor};">${bm.total_r > 0 ? '+' : ''}${bm.total_r}R</strong> | 
+                            PF: ${bm.profit_factor}
+                        </div>
+                    `;
+                }
+                html += `</div>`;
+            }
+
+            content.innerHTML = html;
+
+            // Immediately hydrate Model Performance Tracking with REAL, non-zero stats
+            if (data.model_stats) {
+                renderModelStats(data.model_stats);
+            }
+        }
+    } catch (e) {
+        content.textContent = "Error executing backtest: " + e;
+    }
+}
+
+async function runValidation() {
+    const box = document.getElementById("backtest-summary-box");
+    const content = document.getElementById("backtest-summary-content");
+    box.style.display = "block";
+    content.innerHTML = `<em>Running In-Sample (70%) vs Out-of-Sample (30%) validation for <strong>${currentSymbol}</strong>...</em>`;
+
+    try {
+        const res = await fetch(`/api/backtest/validate?symbol=${currentSymbol}`, { method: "POST" });
+        const data = await res.json();
+        if (data.retention) {
+            content.innerHTML = `
+                <div style="font-size:12px; margin-bottom:4px;">
+                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} VALIDATION ]:</strong>
+                    In-Sample Trades: <strong>${data.in_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.in_sample_metrics.win_rate}%</strong>)<br>
+                    Out-of-Sample Trades: <strong>${data.out_of_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.out_of_sample_metrics.win_rate}%</strong>)<br>
+                    Win Rate Retention: <strong>${data.retention.win_rate_retention_pct}%</strong> | 
+                    Robust Institutional Edge: <strong style="color:${data.is_robust ? 'var(--emerald-neon)' : 'var(--amber-neon)'}">${data.is_robust ? 'CONFIRMED' : 'REFINING'}</strong>
+                </div>
+            `;
+        }
+    } catch (e) {
+        content.textContent = "Error executing validation: " + e;
+    }
+}
+
+async function simulateSetup(dir) {
+    try {
+        const modelEl = document.getElementById("select-test-model");
+        const modelId = modelEl ? modelEl.value : "MODEL_7";
+        const res = await fetch(`/api/simulate_setup?symbol=${currentSymbol}&direction=${dir}&model_id=${modelId}&force=true`, { method: "POST" });
+        await res.json();
+        fetchStatus();
+        fetchCoinAnalysis(currentSymbol);
+    } catch (e) {
+        console.error("Simulation error", e);
+    }
+}

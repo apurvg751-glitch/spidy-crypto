@@ -1,0 +1,33 @@
+================================================================
+  SPIDY CRYPTO - SETUP ON ANY COMPUTER / LAPTOP
+================================================================
+
+Step 1: Install Python
+----------------------------------------------------------------
+1. Download Python from https://www.python.org/downloads/
+   (Version 3.11 or 3.12 recommended)
+2. IMPORTANT during installation:
+   [X] Check the box that says "Add python.exe to PATH" !
+
+Step 2: Extract SPIDY CRYPTO
+----------------------------------------------------------------
+Extract "SPIDY_CRYPTO_PORTABLE.zip" into any folder on your computer
+(for example: C:\spidy_crypto or on your Desktop).
+
+Step 3: Install Required Libraries (One-time setup)
+----------------------------------------------------------------
+Double-click:
+  INSTALL_DEPENDENCIES.bat
+
+Step 4: Launch SPIDY CRYPTO
+----------------------------------------------------------------
+Double-click:
+  RUN_SPIDY.bat
+
+This will:
+- Launch the FastAPI Trading Engine
+- Connect to Delta Exchange India live WebSocket
+- Connect to your Telegram Bot (@Spidy67bot)
+- Open your browser dashboard automatically at http://127.0.0.1:8800
+
+Enjoy automated trading intelligence!
