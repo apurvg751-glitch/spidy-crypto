@@ -331,41 +331,46 @@ class TradeManager:
         )
         self._notify_state_change()
 
-    async def _close_trade(self, terminal_status: str, price: float, details: str):
+    async def _close_trade(self, terminal_status: str, price: float, details: str, custom_r: Optional[float] = None, custom_pnl: Optional[float] = None):
         if not self.active_trade:
             return
         coin = self.active_trade["coin"]
         direction = self.active_trade["direction"]
         setup_id = self.active_trade["setup_id"]
-        entry = self.active_trade["entry"]
-        stop = self.active_trade["stop_loss"]
+        entry = float(self.active_trade["entry"])
+        stop = float(self.active_trade["stop_loss"])
         risk = abs(entry - stop)
         model_id = self.active_trade.get("model_id", "MODEL_1")
         score = self.active_trade.get("setup_score", 80)
         confirmations = self.active_trade.get("confirmations_count", 5)
         now = int(time.time())
 
-        # Determine outcome, achieved R, and update model statistics
-        if terminal_status == "CANCELLED":
-            # Calculate actual real PnL at the closed price
-            price_diff = (price - entry) if direction == "LONG" else (entry - price)
-            achieved_r = round(price_diff / max(risk, 1e-4), 2)
+        risk_unit = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
+
+        # Determine outcome, achieved R, and real Rupee PnL
+        if custom_r is not None:
+            achieved_r = custom_r
             won = (achieved_r > 0)
-            terminal_status = "COMPLETED" if won else "STOPPED"
+            pnl = custom_pnl if custom_pnl is not None else round(achieved_r * risk_unit, 2)
         elif terminal_status == "COMPLETED":
             won = True
-            achieved_r = self.active_trade["rr"]
+            achieved_r = float(self.active_trade.get("rr", 2.0))
+            pnl = round(achieved_r * risk_unit, 2)
             self.consecutive_losses = 0
         elif terminal_status == "STOPPED":
             won = False
             achieved_r = -1.0
+            pnl = -round(risk_unit, 2)
             self.consecutive_losses += 1
-            self.current_daily_loss += risk
+            self.current_daily_loss += risk_unit
         else:
-            won = False
-            achieved_r = 0.0
+            # CANCELLED or manual exit: calculate exact PnL from exit price
+            price_diff = (price - entry) if direction == "LONG" else (entry - price)
+            achieved_r = round(price_diff / max(risk, 1e-4), 2)
+            won = (achieved_r > 0)
+            pnl = round(achieved_r * risk_unit, 2)
+            terminal_status = "COMPLETED" if won else ("STOPPED" if achieved_r < 0 else "CANCELLED")
 
-        pnl = round(risk * achieved_r, 2)
         peak_fav = self.active_trade.get("peak_favorable_price", entry)
         peak_adv = self.active_trade.get("peak_adverse_price", entry)
         mfe = round(abs(peak_fav - entry) / max(risk, 1e-4), 2)
@@ -470,12 +475,34 @@ class TradeManager:
             return True, f"Secured {int(pct*100)}% partial profit on {coin} at ${current_p:,.2f}!"
 
     async def emergency_close(self, reason: str = "MANUALLY CLOSED VIA TELEGRAM") -> tuple[bool, str]:
-        """Instantly closes the active trade and clears the global slot."""
+        """Instantly closes the active trade and clears the global slot, calculating live PnL."""
         async with self._lock:
             if not self.active_trade:
                 return False, "No active trade running."
 
             coin = self.active_trade["coin"]
-            price = self.active_trade.get("peak_favorable_price", self.active_trade["entry"])
-            await self._close_trade("CANCELLED", price, reason)
-            return True, f"Active trade on {coin} closed. Global slot is now OPEN (0/1)!"
+            entry = float(self.active_trade["entry"])
+            stop = float(self.active_trade["stop_loss"])
+            direction = self.active_trade["direction"]
+            risk = abs(entry - stop)
+
+            # Fetch live market price right now from Delta Exchange
+            close_price = self.active_trade.get("current_price", entry)
+            try:
+                res = await self.telegram.client.get(f"{settings.DELTA_REST_URL}/v2/tickers/{coin}", timeout=2.0)
+                if res.status_code == 200:
+                    mark = float(res.json().get("result", {}).get("mark_price", 0.0) or res.json().get("result", {}).get("close", 0.0))
+                    if mark > 0:
+                        close_price = mark
+            except Exception:
+                pass
+
+            price_diff = (close_price - entry) if direction == "LONG" else (entry - close_price)
+            achieved_r = round(price_diff / max(risk, 1e-4), 2)
+            risk_unit = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
+            pnl_inr = round(achieved_r * risk_unit, 2)
+            terminal_status = "COMPLETED" if achieved_r > 0 else ("STOPPED" if achieved_r < 0 else "CANCELLED")
+
+            await self._close_trade(terminal_status, close_price, reason, custom_r=achieved_r, custom_pnl=pnl_inr)
+            price_fmt = f"${close_price:,.4f}" if coin == "XRPUSD" else f"${close_price:,.2f}"
+            return True, f"Closed {coin} at {price_fmt} ({pnl_sign}{achieved_r:+.2f}R | {pnl_sign}₹{pnl_inr:,.2f})!"

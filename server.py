@@ -675,15 +675,14 @@ async def api_close_active_trade():
     closed_coin = None
     if trade_manager.active_trade:
         closed_coin = trade_manager.active_trade["coin"]
-        curr_p = trade_manager.active_trade.get("entry", 0.0)
-        await trade_manager._close_trade("CANCELLED", curr_p, "Manually cancelled by user")
+        success, close_msg = await trade_manager.emergency_close("MANUALLY CLOSED BY USER")
 
-    # Clean any lingering waiting/active setups in DB
+    # Clean any lingering waiting setups in DB without overwriting completed trades
     with db._get_connection() as conn:
         conn.execute("""
         UPDATE setups
-        SET trade_status = 'CANCELLED', final_result = 'MANUALLY CANCELLED BY USER'
-        WHERE trade_status IN ('WAITING', 'ACTIVE', 'TRIGGERED', 'PENDING');
+        SET trade_status = 'CANCELLED', final_result = 'CANCELLED BEFORE EXECUTION'
+        WHERE trade_status IN ('WAITING', 'TRIGGERED', 'PENDING');
         """)
         conn.execute("DELETE FROM active_trade;")
 

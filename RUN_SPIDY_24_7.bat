@@ -15,8 +15,12 @@ echo.
 powercfg /change standby-timeout-ac 0 >nul 2>nul
 powercfg /change hibernate-timeout-ac 0 >nul 2>nul
 
+:: 2. Open dashboard in Chrome browser
+echo [DASHBOARD] Opening http://localhost:8800 in your browser...
+start http://localhost:8800
+
 :WATCHDOG_LOOP
-:: 2. Clean port 8800
+:: 3. Clean port 8800
 for /f "tokens=5" %%p in ('netstat -aon ^| findstr :8800 ^| findstr LISTENING 2^>nul') do (
     taskkill /F /PID %%p >nul 2>nul
 )
