@@ -153,9 +153,8 @@ class TelegramBotListener:
 
     async def _send_journal_reply(self, chat_id: str):
         """Sends daily trade performance recap directly to Telegram."""
-        from journal.trade_journal import TradeJournal
-        journal = TradeJournal(self.trade_manager.db)
-        markdown_report = journal.get_telegram_summary_markdown()
+        from journal.trade_journal import TradeJournalEngine
+        markdown_report = TradeJournalEngine.generate_telegram_markdown()
         await self._send_reply(markdown_report, chat_id)
 
     async def _answer_callback(self, cb_id: str, text: str):
