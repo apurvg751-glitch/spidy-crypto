@@ -161,19 +161,18 @@ async def render_keepalive_loop():
     """Keeps Render cloud free instance from spinning down."""
     import os
     import httpx
-    url = os.getenv("RENDER_EXTERNAL_URL")
-    if not url:
-        return
+    url = os.getenv("RENDER_EXTERNAL_URL") or "https://spidy-crypto.onrender.com"
     logger.info(f"Render cloud keepalive activated for: {url}")
     while True:
         try:
-            await asyncio.sleep(600)  # ping every 10 mins
+            await asyncio.sleep(300)  # ping every 5 mins to prevent Render 15-min idle sleep
             async with httpx.AsyncClient() as client:
-                await client.get(f"{url}/api/status", timeout=10.0)
+                res = await client.get(f"{url}/api/status", timeout=10.0)
+                logger.debug(f"Render self-ping status: {res.status_code}")
         except asyncio.CancelledError:
             break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Render self-ping error: {e}")
 
 
 @asynccontextmanager

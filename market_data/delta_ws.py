@@ -84,14 +84,14 @@ class DeltaWsClient:
                     logger.info(f"Connected to Delta WS: {url}")
                     retry_delay = 2  # reset delay on successful connection
 
-                    # Subscribe to candlesticks and ticker
+                    # Subscribe to official Delta Exchange India candlestick streams
                     sub_msg = {
                         "type": "subscribe",
                         "payload": {
                             "channels": [
-                                {"name": "candlesticks_5m", "symbols": self.symbols},
-                                {"name": "candlesticks_15m", "symbols": self.symbols},
-                                {"name": "ticker", "symbols": self.symbols}
+                                {"name": "candlestick_5m", "symbols": self.symbols},
+                                {"name": "candlestick_15m", "symbols": self.symbols},
+                                {"name": "candlestick_1h", "symbols": self.symbols}
                             ]
                         }
                     }
@@ -135,43 +135,52 @@ class DeltaWsClient:
         except Exception:
             return
 
-        msg_type = msg.get("type")
-        if msg_type == "pong" or msg_type == "heartbeat":
+        msg_type = msg.get("type") or ""
+        if msg_type in ("pong", "heartbeat", "subscriptions"):
             return
 
-        channel = msg.get("channel") or ""
-        # Delta candlestick channel format: candlesticks_5m or candlesticks_15m
-        if channel.startswith("candlesticks_"):
-            resolution = channel.replace("candlesticks_", "")
-            symbol = msg.get("symbol")
+        channel = msg.get("channel") or msg_type or ""
+        # Delta candlestick channel format: candlestick_5m, candlestick_15m, candlestick_1h
+        if channel.startswith("candlestick_") or channel.startswith("candlesticks_"):
+            resolution = channel.replace("candlestick_", "").replace("candlesticks_", "")
+            symbol = msg.get("symbol") or msg.get("sy")
             data = msg.get("candle") or msg
-            if symbol and self.on_candle:
+            if symbol:
                 try:
+                    open_p = float(data.get("open") if data.get("open") is not None else data.get("o", 0.0))
+                    high_p = float(data.get("high") if data.get("high") is not None else data.get("h", 0.0))
+                    low_p = float(data.get("low") if data.get("low") is not None else data.get("l", 0.0))
+                    close_p = float(data.get("close") if data.get("close") is not None else data.get("c", 0.0))
+                    vol = float(data.get("volume") if data.get("volume") is not None else data.get("v", 0.0))
+                    
+                    raw_time = data.get("time") or data.get("cst") or (data.get("ts", 0) // 1000000) or int(time.time())
+                    if raw_time > 1000000000000000:
+                        raw_time = raw_time // 1000000
+                    elif raw_time > 1000000000000:
+                        raw_time = raw_time // 1000
+
                     c = Candle(
-                        time=int(data.get("time", time.time())),
-                        open=float(data["open"]),
-                        high=float(data["high"]),
-                        low=float(data["low"]),
-                        close=float(data["close"]),
-                        volume=float(data.get("volume", 0.0)),
+                        time=int(raw_time),
+                        open=open_p,
+                        high=high_p,
+                        low=low_p,
+                        close=close_p,
+                        volume=vol,
                         is_closed=bool(data.get("is_closed", False))
                     )
-                    self.on_candle(symbol, resolution, c)
+                    if self.on_candle and close_p > 0:
+                        self.on_candle(symbol, resolution, c)
+
+                    # Continuous real-time price tick dispatch
+                    if self.on_ticker and close_p > 0:
+                        t = Ticker(
+                            symbol=symbol,
+                            mark_price=close_p,
+                            last_price=close_p,
+                            volume_24h=vol,
+                            change_24h=0.0,
+                            timestamp=int(time.time())
+                        )
+                        self.on_ticker(t)
                 except Exception as e:
                     logger.debug(f"Failed parsing WS candle {msg}: {e}")
-
-        elif channel == "ticker" or msg_type == "v2/ticker":
-            symbol = msg.get("symbol")
-            if symbol and self.on_ticker:
-                try:
-                    t = Ticker(
-                        symbol=symbol,
-                        mark_price=float(msg.get("mark_price") or msg.get("close") or 0.0),
-                        last_price=float(msg.get("close") or msg.get("mark_price") or 0.0),
-                        volume_24h=float(msg.get("volume") or 0.0),
-                        change_24h=float(msg.get("change_24h") or 0.0),
-                        timestamp=int(time.time())
-                    )
-                    self.on_ticker(t)
-                except Exception as e:
-                    logger.debug(f"Failed parsing WS ticker {msg}: {e}")
