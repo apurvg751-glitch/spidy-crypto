@@ -26,9 +26,9 @@ class ConfirmationEngine:
         direction: str,
         candles_5m: Sequence[Candle],
         candles_15m: Sequence[Candle],
-        mtf_context: Optional[MultiTimeframeContext],
-        active_ob: Optional[OrderBlock],
-        active_fvg: Optional[FairValueGap]
+        mtf_context: Optional[MultiTimeframeContext] = None,
+        active_ob: Optional[OrderBlock] = None,
+        active_fvg: Optional[FairValueGap] = None
     ) -> ConfirmationsResult:
         details: dict[str, str] = {}
         passed = 0

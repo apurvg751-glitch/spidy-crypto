@@ -28,3 +28,7 @@ def test_war_room_endpoints():
     assert res_close.status_code == 200
     assert res_close.json()["status"] in ("all_cleared", "trade_closed")
     assert trade_manager.active_trade is None
+
+    # 5. Trigger scan returns 200 without throwing errors
+    res_scan = client.post("/api/trigger_scan")
+    assert res_scan.status_code == 200
