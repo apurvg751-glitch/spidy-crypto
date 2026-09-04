@@ -90,7 +90,10 @@ def format_lifecycle_alert(
     achieved_r: Any = None,
     pnl: Any = None,
     entry: Any = None,
-    stop_loss: Any = None
+    stop_loss: Any = None,
+    position_units: Any = None,
+    margin_used: Any = None,
+    leverage: Any = None
 ) -> str:
     """Formats trade lifecycle updates with live variable PnL, R-Multiple, and precise delta calculations."""
     status_emoji = {
@@ -110,6 +113,15 @@ def format_lifecycle_alert(
         f"Market: {coin} ({direction})",
         f"Status: {status}"
     ]
+
+    if position_units is not None and float(position_units) > 0:
+        units_f = float(position_units)
+        margin_f = float(margin_used or 0.0)
+        lev_val = int(leverage or 6)
+        if margin_f > 0:
+            lines.append(f"Position Size: {units_f:.4g} contracts (₹{int(margin_f):,} Margin @ {lev_val}x)")
+        else:
+            lines.append(f"Position Size: {units_f:.4g} contracts")
 
     if entry is not None and float(entry) > 0:
         entry_f = float(entry)
@@ -149,4 +161,5 @@ def format_lifecycle_alert(
         lines.append("\nGlobal trade lock released. SPIDY CRYPTO is analyzing ETH, BTC, SOL for the next setup.")
 
     return "\n".join(lines)
+
 

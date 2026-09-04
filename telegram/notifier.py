@@ -160,7 +160,10 @@ class TelegramNotifier:
         achieved_r: Optional[float] = None,
         pnl: Optional[float] = None,
         entry: Optional[float] = None,
-        stop_loss: Optional[float] = None
+        stop_loss: Optional[float] = None,
+        position_units: Optional[float] = None,
+        margin_used: Optional[float] = None,
+        leverage: Optional[int] = None
     ) -> bool:
         """Sends lifecycle status updates (ACTIVE, TARGET HIT, STOPPED, CANCELLED, COMPLETED, TRAILING_STOP)."""
         alert_id = f"{status}_{setup_id}"
@@ -177,11 +180,15 @@ class TelegramNotifier:
             achieved_r=achieved_r,
             pnl=pnl,
             entry=entry,
-            stop_loss=stop_loss
+            stop_loss=stop_loss,
+            position_units=position_units,
+            margin_used=margin_used,
+            leverage=leverage
         )
         buttons = get_trade_inline_keyboard()
         success = await self.send_message(message, reply_markup=buttons)
 
         self.db.record_alert_sent(alert_id, coin, status)
         return success
+
 

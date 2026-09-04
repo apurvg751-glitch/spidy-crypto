@@ -350,21 +350,36 @@ class TradeManager:
         original_stop = float(self.active_trade.get("original_stop", stop))
         risk_dist = abs(entry - original_stop)
         price_diff = (price - entry) if direction.upper() == "LONG" else (entry - price)
+        position_units = float(self.active_trade.get("position_units", 0.0))
+        margin_used = float(self.active_trade.get("margin_used", 0.0))
+        leverage = int(self.active_trade.get("leverage", settings.DEFAULT_LEVERAGE))
+
+        # Determine exact trade-specific risk capital in INR
+        if position_units > 0:
+            actual_risk_inr = position_units * risk_dist
+            exact_pnl_inr = position_units * price_diff
+        elif margin_used > 0:
+            pct_move = (price_diff / entry) if entry > 0 else 0.0
+            actual_risk_inr = margin_used * leverage * (risk_dist / entry)
+            exact_pnl_inr = margin_used * leverage * pct_move
+        else:
+            actual_risk_inr = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
+            exact_pnl_inr = (price_diff / max(risk_dist, 1e-4)) * actual_risk_inr
 
         # Dynamic Variable Realized PnL & R-Multiple Calculation
         if custom_r is not None:
             achieved_r = round(custom_r, 2)
             won = (achieved_r > 0.05)
-            pnl = round(custom_pnl if custom_pnl is not None else (achieved_r * risk_unit), 2)
+            pnl = round(custom_pnl if custom_pnl is not None else (achieved_r * actual_risk_inr), 2)
         elif terminal_status == "COMPLETED":
             won = True
             raw_r = price_diff / max(risk_dist, 1e-4)
             achieved_r = round(raw_r if raw_r > 0 else float(self.active_trade.get("rr", 2.0)), 2)
-            pnl = round(achieved_r * risk_unit, 2)
+            pnl = round(exact_pnl_inr if abs(exact_pnl_inr) > 0 else (achieved_r * actual_risk_inr), 2)
             self.consecutive_losses = 0
         elif terminal_status == "STOPPED":
             achieved_r = round(price_diff / max(risk_dist, 1e-4), 2)
-            pnl = round(achieved_r * risk_unit, 2)
+            pnl = round(exact_pnl_inr if abs(exact_pnl_inr) > 0 else (achieved_r * actual_risk_inr), 2)
             won = (achieved_r > 0.05)
             is_breakeven = (-0.08 <= achieved_r <= 0.08)
 
@@ -381,8 +396,8 @@ class TradeManager:
         else:
             # CANCELLED or manual emergency exit: exact dynamic calculation
             achieved_r = round(price_diff / max(risk_dist, 1e-4), 2)
+            pnl = round(exact_pnl_inr if abs(exact_pnl_inr) > 0 else (achieved_r * actual_risk_inr), 2)
             won = (achieved_r > 0.05)
-            pnl = round(achieved_r * risk_unit, 2)
             if achieved_r > 0.05:
                 terminal_status = "COMPLETED"
             elif achieved_r < -0.08:
@@ -432,7 +447,7 @@ class TradeManager:
         self.active_trade = None
         self.global_status = "WATCHING"
 
-        logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Achieved R: {achieved_r:.2f}, PnL: ₹{pnl:.2f}. Global lock RELEASED.")
+        logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Units: {position_units:.4g}, Margin: ₹{margin_used:.2f}, Achieved R: {achieved_r:.2f}, PnL: ₹{pnl:.2f}. Global lock RELEASED.")
         await self.telegram.send_trade_lifecycle_update(
             coin=coin,
             direction=direction,
@@ -443,7 +458,10 @@ class TradeManager:
             achieved_r=achieved_r,
             pnl=pnl,
             entry=entry,
-            stop_loss=original_stop
+            stop_loss=original_stop,
+            position_units=position_units,
+            margin_used=margin_used,
+            leverage=leverage
         )
         self._notify_state_change()
 
