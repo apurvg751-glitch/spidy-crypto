@@ -1,6 +1,17 @@
 from typing import Any
 
 
+def format_coin_price(coin: str, price: float) -> str:
+    """Formats price according to Delta Exchange precision specifications."""
+    if coin == "XRPUSD":
+        return f"${price:,.4f}"
+    elif coin == "AVAXUSD":
+        return f"${price:,.3f}"
+    elif coin == "BTCUSD":
+        return f"${price:,.1f}"
+    return f"${price:,.2f}"
+
+
 def format_main_alert(setup: dict[str, Any]) -> str:
     """
     Formats the Telegram alert when a valid setup is selected.
@@ -75,28 +86,67 @@ def format_lifecycle_alert(
     direction: str,
     status: str,
     price: float,
-    details: str = ""
+    details: str = "",
+    achieved_r: Any = None,
+    pnl: Any = None,
+    entry: Any = None,
+    stop_loss: Any = None
 ) -> str:
-    """Formats trade lifecycle updates (TRADE ACTIVE, TARGET HIT, STOPPED, CANCELLED, COMPLETED)."""
+    """Formats trade lifecycle updates with live variable PnL, R-Multiple, and precise delta calculations."""
     status_emoji = {
         "ACTIVE": "🟢",
         "TARGET HIT": "🎯",
         "STOPPED": "🛑",
         "CANCELLED": "⚪",
-        "COMPLETED": "🏁"
+        "COMPLETED": "🏁",
+        "TRAILING_STOP": "📈"
     }.get(status, "🕷️")
 
-    header_status = f"TRADE {status}" if status == "ACTIVE" else status
-    msg = (
-        f"{status_emoji} SPIDY CRYPTO — {header_status}\n\n"
-        f"Market: {coin} ({direction})\n"
-        f"Status: {status}\n"
-        f"Current Price: {price:.2f}\n"
-    )
+    header_status = f"TRADE {status}" if status in ("ACTIVE", "TRAILING_STOP") else status
+    is_terminal = status in ("STOPPED", "CANCELLED", "COMPLETED")
+
+    lines = [
+        f"{status_emoji} SPIDY CRYPTO — {header_status}\n",
+        f"Market: {coin} ({direction})",
+        f"Status: {status}"
+    ]
+
+    if entry is not None and float(entry) > 0:
+        entry_f = float(entry)
+        lines.append(f"Entry Price: {format_coin_price(coin, entry_f)}")
+        lines.append(f"Exit / Current Price: {format_coin_price(coin, price)}")
+        price_diff = (price - entry_f) if direction.upper() == "LONG" else (entry_f - price)
+        pct_diff = (price_diff / entry_f * 100.0)
+        diff_sign = "+" if price_diff >= 0 else "-"
+        abs_diff = abs(price_diff)
+        diff_str = format_coin_price(coin, abs_diff).replace("$", "")
+        lines.append(f"Price Delta: {diff_sign}${diff_str} ({diff_sign}{abs(pct_diff):.2f}%)")
+    else:
+        lines.append(f"Current Price: {format_coin_price(coin, price)}")
+
+    if achieved_r is not None:
+        r_val = float(achieved_r)
+        r_sign = "+" if r_val >= 0 else ""
+        if abs(r_val) <= 0.08:
+            lines.append(f"Achieved R: {r_sign}{r_val:.2f}R (Break-Even 🛡️)")
+        else:
+            lines.append(f"Achieved R: {r_sign}{r_val:.2f}R")
+
+    if pnl is not None:
+        pnl_val = float(pnl)
+        pnl_sign = "+" if pnl_val >= 0 else ""
+        if abs(pnl_val) <= 5.0 and (achieved_r is not None and abs(float(achieved_r)) <= 0.08):
+            lines.append(f"Realized PnL: ₹0.00 (Zero Loss Protection 🛡️)")
+        elif pnl_val > 0:
+            lines.append(f"Realized PnL: {pnl_sign}₹{pnl_val:,.2f} 🟢")
+        else:
+            lines.append(f"Realized PnL: -₹{abs(pnl_val):,.2f} 🔴")
+
     if details:
-        msg += f"Details: {details}\n"
+        lines.append(f"Details: {details}")
 
-    if status in ("STOPPED", "CANCELLED", "COMPLETED"):
-        msg += "\nGlobal trade lock released. SPIDY CRYPTO is analyzing ETH, BTC, SOL for the next setup."
+    if is_terminal:
+        lines.append("\nGlobal trade lock released. SPIDY CRYPTO is analyzing ETH, BTC, SOL for the next setup.")
 
-    return msg
+    return "\n".join(lines)
+

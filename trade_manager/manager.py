@@ -347,34 +347,55 @@ class TradeManager:
 
         risk_unit = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
 
-        # Determine outcome, achieved R, and real Rupee PnL
+        original_stop = float(self.active_trade.get("original_stop", stop))
+        risk_dist = abs(entry - original_stop)
+        price_diff = (price - entry) if direction.upper() == "LONG" else (entry - price)
+
+        # Dynamic Variable Realized PnL & R-Multiple Calculation
         if custom_r is not None:
-            achieved_r = custom_r
-            won = (achieved_r > 0)
-            pnl = custom_pnl if custom_pnl is not None else round(achieved_r * risk_unit, 2)
+            achieved_r = round(custom_r, 2)
+            won = (achieved_r > 0.05)
+            pnl = round(custom_pnl if custom_pnl is not None else (achieved_r * risk_unit), 2)
         elif terminal_status == "COMPLETED":
             won = True
-            achieved_r = float(self.active_trade.get("rr", 2.0))
+            raw_r = price_diff / max(risk_dist, 1e-4)
+            achieved_r = round(raw_r if raw_r > 0 else float(self.active_trade.get("rr", 2.0)), 2)
             pnl = round(achieved_r * risk_unit, 2)
             self.consecutive_losses = 0
         elif terminal_status == "STOPPED":
-            won = False
-            achieved_r = -1.0
-            pnl = -round(risk_unit, 2)
-            self.consecutive_losses += 1
-            self.current_daily_loss += risk_unit
-        else:
-            # CANCELLED or manual exit: calculate exact PnL from exit price
-            price_diff = (price - entry) if direction == "LONG" else (entry - price)
-            achieved_r = round(price_diff / max(risk, 1e-4), 2)
-            won = (achieved_r > 0)
+            achieved_r = round(price_diff / max(risk_dist, 1e-4), 2)
             pnl = round(achieved_r * risk_unit, 2)
-            terminal_status = "COMPLETED" if won else ("STOPPED" if achieved_r < 0 else "CANCELLED")
+            won = (achieved_r > 0.05)
+            is_breakeven = (-0.08 <= achieved_r <= 0.08)
+
+            if won:
+                # Stopped out in profit via trailing stop ratchet!
+                terminal_status = "COMPLETED"
+                self.consecutive_losses = 0
+            elif is_breakeven:
+                # Protected Break-Even exit: zero/negligible loss, do not count as full loss streak
+                self.consecutive_losses = 0
+            else:
+                self.consecutive_losses += 1
+                self.current_daily_loss += abs(pnl)
+        else:
+            # CANCELLED or manual emergency exit: exact dynamic calculation
+            achieved_r = round(price_diff / max(risk_dist, 1e-4), 2)
+            won = (achieved_r > 0.05)
+            pnl = round(achieved_r * risk_unit, 2)
+            if achieved_r > 0.05:
+                terminal_status = "COMPLETED"
+            elif achieved_r < -0.08:
+                terminal_status = "STOPPED"
+                self.consecutive_losses += 1
+                self.current_daily_loss += abs(pnl)
+            else:
+                terminal_status = "CANCELLED"
 
         peak_fav = self.active_trade.get("peak_favorable_price", entry)
         peak_adv = self.active_trade.get("peak_adverse_price", entry)
-        mfe = round(abs(peak_fav - entry) / max(risk, 1e-4), 2)
-        mae = round(abs(peak_adv - entry) / max(risk, 1e-4), 2)
+        mfe = round(abs(peak_fav - entry) / max(risk_dist, 1e-4), 2)
+        mae = round(abs(peak_adv - entry) / max(risk_dist, 1e-4), 2)
 
         # Update historical setup record in DB
         self.db.update_setup_status(
@@ -411,14 +432,18 @@ class TradeManager:
         self.active_trade = None
         self.global_status = "WATCHING"
 
-        logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Achieved R: {achieved_r:.1f}. Global lock RELEASED.")
+        logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Achieved R: {achieved_r:.2f}, PnL: ₹{pnl:.2f}. Global lock RELEASED.")
         await self.telegram.send_trade_lifecycle_update(
             coin=coin,
             direction=direction,
             status=terminal_status,
             price=price,
             setup_id=setup_id,
-            details=details
+            details=details,
+            achieved_r=achieved_r,
+            pnl=pnl,
+            entry=entry,
+            stop_loss=original_stop
         )
         self._notify_state_change()
 
