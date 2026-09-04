@@ -1,0 +1,25 @@
+﻿name: SPIDY 24/7 Cloud Keep-Alive Guardian
+
+on:
+  schedule:
+    # Runs every 5 minutes, 24/7/365 completely free on GitHub Cloud
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping SPIDY Cloud Web Service
+        run: |
+          echo "Pinging https://spidy-crypto.onrender.com/api/status..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://spidy-crypto.onrender.com/api/status)
+          echo "HTTP Response Code: $RESPONSE"
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "SPIDY Cloud is active, healthy, and awake!"
+          else
+            echo "Waking service up..."
+            curl -s https://spidy-crypto.onrender.com/api/status
+          fi
