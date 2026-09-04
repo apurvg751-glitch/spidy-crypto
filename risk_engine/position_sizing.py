@@ -76,18 +76,13 @@ class PositionSizer:
                 rejection_reason="Invalid stop distance (<= 0)"
             )
 
-        # Target dollar risk based on equity
-        risk_amount = equity * (risk_pct / 100.0)
-        units = risk_amount / stop_dist
-        notional = units * entry
-        required_margin = notional / lev
-
-        # Apply maximum margin cap (e.g. ₹250 cap)
-        if required_margin > margin_cap:
-            required_margin = margin_cap
-            notional = required_margin * lev
-            units = notional / entry
-            risk_amount = units * stop_dist
+        # Institutional Position Sizing: ₹3,000 Margin @ 6x Leverage -> ₹18,000 Notional Value
+        # All trade risk is evaluated relative to the ₹3,000 allocated margin
+        required_margin = min(margin_cap, 3000.0) if margin_cap else 3000.0
+        notional = required_margin * lev
+        units = notional / entry
+        risk_amount = units * stop_dist
+        risk_pct = round((risk_amount / required_margin) * 100.0, 2)
 
         return PositionSizeResult(
             is_allowed=True,
@@ -95,7 +90,8 @@ class PositionSizer:
             notional_value=round(notional, 2),
             required_margin=round(required_margin, 2),
             risk_amount=round(risk_amount, 2),
-            risk_pct=round((risk_amount / equity) * 100.0, 2),
+            risk_pct=risk_pct,
             leverage=lev,
             account_equity=equity
         )
+
