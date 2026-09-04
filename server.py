@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 import json
@@ -9,7 +10,7 @@ from typing import Any, Optional
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -194,9 +195,14 @@ async def lifespan(app: FastAPI):
     scan_task = asyncio.create_task(background_scanner_loop())
     keepalive_task = asyncio.create_task(render_keepalive_loop())
 
-    from telegram.bot_listener import TelegramBotListener
-    bot_listener = TelegramBotListener(trade_manager=trade_manager, feed_manager=feed_manager)
-    listener_task = asyncio.create_task(bot_listener.start_polling())
+    # Telegram interactive polling (Runs 24/7 on primary cloud node)
+    bot_listener = None
+    listener_task = None
+    enable_tg_listener = not (os.getenv("DISABLE_TELEGRAM_LISTENER", "").lower() in ("true", "1"))
+    if enable_tg_listener:
+        from telegram.bot_listener import TelegramBotListener
+        bot_listener = TelegramBotListener(trade_manager=trade_manager, feed_manager=feed_manager)
+        listener_task = asyncio.create_task(bot_listener.start_polling())
 
     yield
 
@@ -205,9 +211,8 @@ async def lifespan(app: FastAPI):
         scan_task.cancel()
     if keepalive_task:
         keepalive_task.cancel()
-    if listener_task:
-        listener_task.cancel()
-    await bot_listener.close()
+    if bot_listener:
+        await bot_listener.close()
     if feed_manager:
         await feed_manager.stop()
     await telegram.close()
@@ -567,6 +572,7 @@ async def api_analysis(symbol: str):
         }
     ]
 
+    from config.precision import round_price
     from structure.target_snapper import TargetSnapper
     from structure.kill_zones import KillZoneEngine
     from indicators.smt_divergence import SMTDivergenceEngine
@@ -578,30 +584,32 @@ async def api_analysis(symbol: str):
     eth_m = feed_manager.get_market_state("ETHUSD") if feed_manager else None
     smt = SMTDivergenceEngine.evaluate(
         btc_m.candles_15m if btc_m else [],
-        eth_m.candles_15m if eth_m else []
+        eth_m.candles_15m if eth_m else [],
+        direction=direction
     )
 
     # Calculate coin-tailored levels anchored to real market structure
     if is_active:
-        entry = active_t["entry"]
-        stop = active_t["stop_loss"]
-        t1 = active_t["target_1"]
-        t2 = active_t["target_2"]
-        rr = active_t["rr"]
-        score = active_t["setup_score"]
+        entry = active_t.get("entry", active_t.get("entry_price", price))
+        stop = active_t.get("stop_loss", price)
+        t1 = active_t.get("target_1", price)
+        t2 = active_t.get("target_2", price)
+        rr = active_t.get("rr", 2.0)
+        score = active_t.get("setup_score", base_score)
         model_name = active_t.get("model_name", "Liquidity Sweep Reversal")
-        status_label = active_t["trade_status"]
+        status_label = active_t.get("trade_status", "ACTIVE")
         current_grade = active_t.get("grade", grade_res.grade)
     else:
         current_grade = grade_res.grade if grade_res.is_tradeable else "B+"
-        raw_sl = round(price - (atr * 0.8) if direction == "LONG" else price + (atr * 0.8), 2)
+        raw_sl = round_price(sym, price - (atr * 0.8) if direction == "LONG" else price + (atr * 0.8))
         snapped = TargetSnapper.snap_targets(
             direction=direction,
             entry=price,
             stop_loss=raw_sl,
             candles_15m=c15,
             dealing_range=dr,
-            min_rr=1.6
+            min_rr=1.6,
+            symbol=sym
         )
         entry = snapped.entry
         stop = snapped.stop_loss
@@ -636,12 +644,12 @@ async def api_analysis(symbol: str):
         "smt": smt.model_dump(),
         "vwap": vwap_res.__dict__ if vwap_res else None,
         "levels": {
-            "entry": round(entry, 2),
-            "stop_loss": round(stop, 2),
-            "target_1": round(t1, 2),
-            "target_2": round(t2, 2),
+            "entry": round_price(sym, entry),
+            "stop_loss": round_price(sym, stop),
+            "target_1": round_price(sym, t1),
+            "target_2": round_price(sym, t2),
             "rr": rr,
-            "margin": f"₹{int(settings.ACCOUNT_EQUITY):,} (1x)"
+            "margin": f"₹{int(settings.MAX_ALLOWED_MARGIN):,} ({settings.DEFAULT_LEVERAGE}x Lev / ₹18k Pos)" if is_active else f"Idle (₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x)"
         },
         "progression_steps": steps,
         "reasons": [
@@ -749,6 +757,26 @@ async def api_close_active_trade():
     if closed_coin:
         return {"status": "trade_closed", "message": f"Active trade on {closed_coin} cancelled. Global slot is now OPEN."}
     return {"status": "all_cleared", "message": "All trades cancelled and cleared. Global slot is OPEN."}
+
+
+@app.post("/api/breakeven")
+async def api_breakeven():
+    """Moves stop loss of active trade to breakeven."""
+    if not trade_manager or not trade_manager.active_trade:
+        raise HTTPException(status_code=400, detail="No active trade to move to Breakeven")
+    success, msg = await trade_manager.move_to_breakeven()
+    await broadcast_full_status()
+    return {"status": "success" if success else "failed", "message": msg}
+
+
+@app.post("/api/partial")
+async def api_partial():
+    """Closes 50% partial on active trade."""
+    if not trade_manager or not trade_manager.active_trade:
+        raise HTTPException(status_code=400, detail="No active trade to take partial profit on")
+    success, msg = await trade_manager.close_partial(0.50)
+    await broadcast_full_status()
+    return {"status": "success" if success else "failed", "message": msg}
 
 
 @app.post("/api/reset")

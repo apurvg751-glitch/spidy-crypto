@@ -68,10 +68,10 @@ class DerivativesIntelEngine:
         annualized = round(funding * 3 * 365 * 100.0, 2)  # 3 funding periods per day (8h)
 
         # Classify Retail Crowd Sentiment
-        if funding >= 0.025:
+        if funding >= 0.0005:
             sentiment = "EXTREME_LONG_CROWDED"
             squeeze = "LONG_SQUEEZE_PRIME"
-        elif funding <= -0.015:
+        elif funding <= -0.0003:
             sentiment = "EXTREME_SHORT_CROWDED"
             squeeze = "SHORT_SQUEEZE_PRIME"
         else:

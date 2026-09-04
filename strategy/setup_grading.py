@@ -46,36 +46,22 @@ class SetupGradingEngine:
     ) -> SetupGradeResult:
         dir_upper = direction.upper()
 
-        # 1. Unified Macro Consensus Check (Bans opposing counter-trend setups)
+        # 1. Check Premium vs Discount Zone
+        pd_zone_ok, pd_desc = EquilibriumEngine.validate_setup_zone(dir_upper, current_price, dealing_range)
+
+        # 2. Unified Macro Consensus & Institutional Reversal Intelligence
         macro_aligned = False
         if mtf_context:
             macro_4h = (mtf_context.macro_bias_4h or "").upper()
             trend_1h = (mtf_context.trend_1h or "").upper()
 
-            # Hard Macro Consensus Lock: 4H & 1H Trend Governs All 10 Models (Zero Counter-Trend)
-            if (macro_4h == "BEARISH" or trend_1h == "BEARISH") and dir_upper == "LONG":
-                return SetupGradeResult(
-                    grade="REJECTED",
-                    is_tradeable=False,
-                    summary="Rejected by Trend Lock: 1H/4H Trend is BEARISH (All Longs Banned)."
-                )
-            if (macro_4h == "BULLISH" or trend_1h == "BULLISH") and dir_upper == "SHORT":
-                return SetupGradeResult(
-                    grade="REJECTED",
-                    is_tradeable=False,
-                    summary="Rejected by Trend Lock: 1H/4H Trend is BULLISH (All Shorts Banned)."
-                )
-
+            # Direct Macro Alignment
             if dir_upper == "LONG":
-                macro_aligned = (macro_4h == "BULLISH" and trend_1h != "BEARISH")
+                macro_aligned = (macro_4h == "BULLISH" and trend_1h != "BEARISH") or (pd_zone_ok and setup_score >= 75)
             elif dir_upper == "SHORT":
-                macro_aligned = (macro_4h == "BEARISH" and trend_1h != "BULLISH")
+                macro_aligned = (macro_4h == "BEARISH" and trend_1h != "BULLISH") or (pd_zone_ok and setup_score >= 75)
         else:
             macro_aligned = True
-
-
-        # 2. Check Premium vs Discount Zone
-        pd_zone_ok, pd_desc = EquilibriumEngine.validate_setup_zone(dir_upper, current_price, dealing_range)
 
         # 3. Displacement
         displacement_ok = displacement.detected if displacement else False

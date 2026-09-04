@@ -17,7 +17,7 @@ class BacktestEngine:
     """
 
     def __init__(self, symbols: Optional[list[str]] = None):
-        self.symbols = symbols or ["ETHUSD", "BTCUSD", "SOLUSD"]
+        self.symbols = symbols or ["BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "AVAXUSD", "XRPUSD"]
 
     def run(
         self,
@@ -66,8 +66,60 @@ class BacktestEngine:
                         active_trade["mfe"] = max(active_trade["mfe"], fav)
                         active_trade["mae"] = max(active_trade["mae"], adv)
 
-                        # 1. Full Target 2 Hit
-                        if bar.high >= t2:
+                        # Dual-touch / Stop Loss check takes priority (pessimistic / realistic execution)
+                        if bar.low <= stop:
+                            trades.append(BacktestTrade(
+                                id=active_trade["id"],
+                                coin=trade_coin,
+                                model_id=active_trade["model_id"],
+                                direction=direction,
+                                entry_time=active_trade["entry_time"],
+                                exit_time=curr_time,
+                                entry_price=entry,
+                                exit_price=stop,
+                                stop_loss=stop,
+                                target_1=t1,
+                                target_2=t2,
+                                expected_rr=active_trade["rr"],
+                                achieved_r=-1.0,
+                                pnl=-risk,
+                                won=False,
+                                setup_score=active_trade["setup_score"],
+                                confirmations_count=active_trade["confirmations_count"],
+                                mfe=round(active_trade["mfe"], 2),
+                                mae=round(active_trade["mae"], 2),
+                                exit_reason="STOPPED"
+                            ))
+                            active_trade = None
+
+                        # Breakeven Stop (if favorable price exceeded 0.8R)
+                        elif active_trade["mfe"] >= 0.8 and bar.low <= entry:
+                            trades.append(BacktestTrade(
+                                id=active_trade["id"],
+                                coin=trade_coin,
+                                model_id=active_trade["model_id"],
+                                direction=direction,
+                                entry_time=active_trade["entry_time"],
+                                exit_time=curr_time,
+                                entry_price=entry,
+                                exit_price=entry,
+                                stop_loss=stop,
+                                target_1=t1,
+                                target_2=t2,
+                                expected_rr=active_trade["rr"],
+                                achieved_r=0.0,
+                                pnl=0.0,
+                                won=False,
+                                setup_score=active_trade["setup_score"],
+                                confirmations_count=active_trade["confirmations_count"],
+                                mfe=round(active_trade["mfe"], 2),
+                                mae=round(active_trade["mae"], 2),
+                                exit_reason="BREAKEVEN"
+                            ))
+                            active_trade = None
+
+                        # Full Target 2 Hit
+                        elif bar.high >= t2:
                             trades.append(BacktestTrade(
                                 id=active_trade["id"],
                                 coin=trade_coin,
@@ -92,7 +144,7 @@ class BacktestEngine:
                             ))
                             active_trade = None
 
-                        # 2. Target 1 Hit
+                        # Target 1 Hit
                         elif bar.high >= t1:
                             trades.append(BacktestTrade(
                                 id=active_trade["id"],
@@ -118,34 +170,14 @@ class BacktestEngine:
                             ))
                             active_trade = None
 
-                        # 3. Breakeven Stop (if favorable price exceeded 0.8R)
-                        elif active_trade["mfe"] >= 0.8 and bar.low <= entry:
-                            trades.append(BacktestTrade(
-                                id=active_trade["id"],
-                                coin=trade_coin,
-                                model_id=active_trade["model_id"],
-                                direction=direction,
-                                entry_time=active_trade["entry_time"],
-                                exit_time=curr_time,
-                                entry_price=entry,
-                                exit_price=entry,
-                                stop_loss=stop,
-                                target_1=t1,
-                                target_2=t2,
-                                expected_rr=active_trade["rr"],
-                                achieved_r=0.0,
-                                pnl=0.0,
-                                won=True,
-                                setup_score=active_trade["setup_score"],
-                                confirmations_count=active_trade["confirmations_count"],
-                                mfe=round(active_trade["mfe"], 2),
-                                mae=round(active_trade["mae"], 2),
-                                exit_reason="BREAKEVEN"
-                            ))
-                            active_trade = None
+                    elif direction == "SHORT":
+                        fav = (entry - bar.low) / max(risk, 1e-4)
+                        adv = (bar.high - entry) / max(risk, 1e-4)
+                        active_trade["mfe"] = max(active_trade["mfe"], fav)
+                        active_trade["mae"] = max(active_trade["mae"], adv)
 
-                        # 4. Stop Loss
-                        elif bar.low <= stop:
+                        # Dual-touch / Stop Loss check takes priority (pessimistic / realistic execution)
+                        if bar.high >= stop:
                             trades.append(BacktestTrade(
                                 id=active_trade["id"],
                                 coin=trade_coin,
@@ -170,14 +202,34 @@ class BacktestEngine:
                             ))
                             active_trade = None
 
-                    elif direction == "SHORT":
-                        fav = (entry - bar.low) / max(risk, 1e-4)
-                        adv = (bar.high - entry) / max(risk, 1e-4)
-                        active_trade["mfe"] = max(active_trade["mfe"], fav)
-                        active_trade["mae"] = max(active_trade["mae"], adv)
+                        # Breakeven Stop
+                        elif active_trade["mfe"] >= 0.8 and bar.high >= entry:
+                            trades.append(BacktestTrade(
+                                id=active_trade["id"],
+                                coin=trade_coin,
+                                model_id=active_trade["model_id"],
+                                direction=direction,
+                                entry_time=active_trade["entry_time"],
+                                exit_time=curr_time,
+                                entry_price=entry,
+                                exit_price=entry,
+                                stop_loss=stop,
+                                target_1=t1,
+                                target_2=t2,
+                                expected_rr=active_trade["rr"],
+                                achieved_r=0.0,
+                                pnl=0.0,
+                                won=False,
+                                setup_score=active_trade["setup_score"],
+                                confirmations_count=active_trade["confirmations_count"],
+                                mfe=round(active_trade["mfe"], 2),
+                                mae=round(active_trade["mae"], 2),
+                                exit_reason="BREAKEVEN"
+                            ))
+                            active_trade = None
 
-                        # 1. Full Target 2 Hit
-                        if bar.low <= t2:
+                        # Full Target 2 Hit
+                        elif bar.low <= t2:
                             trades.append(BacktestTrade(
                                 id=active_trade["id"],
                                 coin=trade_coin,
@@ -202,7 +254,7 @@ class BacktestEngine:
                             ))
                             active_trade = None
 
-                        # 2. Target 1 Hit
+                        # Target 1 Hit
                         elif bar.low <= t1:
                             trades.append(BacktestTrade(
                                 id=active_trade["id"],
@@ -225,58 +277,6 @@ class BacktestEngine:
                                 mfe=round(active_trade["mfe"], 2),
                                 mae=round(active_trade["mae"], 2),
                                 exit_reason="TARGET_1"
-                            ))
-                            active_trade = None
-
-                        # 3. Breakeven Stop
-                        elif active_trade["mfe"] >= 0.8 and bar.high >= entry:
-                            trades.append(BacktestTrade(
-                                id=active_trade["id"],
-                                coin=trade_coin,
-                                model_id=active_trade["model_id"],
-                                direction=direction,
-                                entry_time=active_trade["entry_time"],
-                                exit_time=curr_time,
-                                entry_price=entry,
-                                exit_price=entry,
-                                stop_loss=stop,
-                                target_1=t1,
-                                target_2=t2,
-                                expected_rr=active_trade["rr"],
-                                achieved_r=0.0,
-                                pnl=0.0,
-                                won=True,
-                                setup_score=active_trade["setup_score"],
-                                confirmations_count=active_trade["confirmations_count"],
-                                mfe=round(active_trade["mfe"], 2),
-                                mae=round(active_trade["mae"], 2),
-                                exit_reason="BREAKEVEN"
-                            ))
-                            active_trade = None
-
-                        # 4. Stop Loss
-                        elif bar.high >= stop:
-                            trades.append(BacktestTrade(
-                                id=active_trade["id"],
-                                coin=trade_coin,
-                                model_id=active_trade["model_id"],
-                                direction=direction,
-                                entry_time=active_trade["entry_time"],
-                                exit_time=curr_time,
-                                entry_price=entry,
-                                exit_price=stop,
-                                stop_loss=stop,
-                                target_1=t1,
-                                target_2=t2,
-                                expected_rr=active_trade["rr"],
-                                achieved_r=-1.0,
-                                pnl=-risk,
-                                won=False,
-                                setup_score=active_trade["setup_score"],
-                                confirmations_count=active_trade["confirmations_count"],
-                                mfe=round(active_trade["mfe"], 2),
-                                mae=round(active_trade["mae"], 2),
-                                exit_reason="STOPPED"
                             ))
                             active_trade = None
 

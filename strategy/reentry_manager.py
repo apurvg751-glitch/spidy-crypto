@@ -275,15 +275,16 @@ class ReentryManager:
         # 5. Overextension Guard (Anti-Price-Chasing)
         overextension_ratio = 0.0
         if candles_5m and atr > 0:
-            # Determine structural anchor: retest level, or extreme of last 3 bars
+            # Determine structural anchor: local impulse origin from recent closed candles (last 5-6 bars)
+            recent_closed = candles_5m[-6:-1] if len(candles_5m) > 6 else (candles_5m[:-1] if len(candles_5m) > 1 else candles_5m)
             ref_anchor = candidate.entry
             if candidate.direction == "LONG":
-                lows = [c.low for c in candles_5m[:-1]] if len(candles_5m) > 1 else [candles_5m[0].low]
-                ref_anchor = min(lows)
+                lows = [c.low for c in recent_closed]
+                ref_anchor = min(lows) if lows else candidate.entry
                 dist = abs(candidate.entry - ref_anchor)
             else:
-                highs = [c.high for c in candles_5m[:-1]] if len(candles_5m) > 1 else [candles_5m[0].high]
-                ref_anchor = max(highs)
+                highs = [c.high for c in recent_closed]
+                ref_anchor = max(highs) if highs else candidate.entry
                 dist = abs(ref_anchor - candidate.entry)
 
             overextension_ratio = round(dist / atr, 2)

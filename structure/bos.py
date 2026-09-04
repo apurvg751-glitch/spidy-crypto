@@ -40,7 +40,7 @@ def detect_bos(
     recent_highs = [s for s in valid_swings if s.point_type == "HIGH"]
     recent_lows = [s for s in valid_swings if s.point_type == "LOW"]
 
-    for bar_idx in range(n - 1, start_bar - 1, -1):
+    for bar_idx in range(start_bar, n):
         c = candles[bar_idx]
 
         # Bullish BOS: candle closed above a prior swing high

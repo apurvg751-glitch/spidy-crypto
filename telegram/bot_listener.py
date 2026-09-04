@@ -43,6 +43,21 @@ class TelegramBotListener:
         self.is_running = True
         logger.info("Telegram High-Speed Long Polling Listener started.")
 
+        # 1. Discard stale backlog updates from past sessions so bot doesn't re-fire old clicks
+        try:
+            purge_res = await self.client.get(
+                f"https://api.telegram.org/bot{self.bot_token}/getUpdates",
+                params={"offset": -1, "timeout": 0},
+                timeout=5.0
+            )
+            if purge_res.status_code == 200:
+                res_data = purge_res.json().get("result", [])
+                if res_data:
+                    self.last_update_id = max(u.get("update_id", 0) for u in res_data)
+                    logger.info(f"Telegram Listener initialized: cleared backlog up to update_id {self.last_update_id}")
+        except Exception as e:
+            logger.warning(f"Could not purge Telegram backlog: {e}")
+
         while self.is_running:
             try:
                 url = f"https://api.telegram.org/bot{self.bot_token}/getUpdates"
@@ -57,8 +72,11 @@ class TelegramBotListener:
                     for update in data.get("result", []):
                         self.last_update_id = max(self.last_update_id, update.get("update_id", 0))
                         asyncio.create_task(self._process_update(update))
+                elif res.status_code == 409:
+                    logger.warning("Telegram 409 Conflict: Another instance is polling getUpdates. Backing off 5 seconds to avoid collision...")
+                    await asyncio.sleep(5.0)
                 else:
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -86,8 +104,22 @@ class TelegramBotListener:
                 await self._send_journal_reply(chat_id)
             elif text in ("/be", "breakeven"):
                 await self._handle_callback(None, "CMD_BE", chat_id)
+            elif text in ("/partial", "partial"):
+                await self._handle_callback(None, "CMD_PARTIAL", chat_id)
             elif text in ("/close", "close", "/stop", "stop", "/exit", "exit"):
                 await self._handle_callback(None, "CMD_CLOSE", chat_id)
+            elif text in ("/help", "help"):
+                await self._send_reply(
+                    "🕷️ *SPIDY CRYPTO COMMAND HUB*\n\n"
+                    "• `/status` — Live Telemetry & Institutional Thinking Report\n"
+                    "• `/be` — Move Stop Loss to Breakeven (Risk-Free Shield)\n"
+                    "• `/partial` — Secure 50% Profit into Target 1\n"
+                    "• `/close` — Emergency Exit Active Trade\n"
+                    "• `/journal` — Daily Performance & Metrics Summary\n"
+                    "• `/reset` — Wipe State & Restart Market Scans Fresh\n\n"
+                    "All trades strictly follow ₹3,000 Margin @ 6x Leverage! 🚀",
+                    chat_id
+                )
             elif text in ("/reset", "reset"):
                 self.trade_manager.db.reset_all_data()
                 self.trade_manager.active_trade = None
@@ -95,7 +127,7 @@ class TelegramBotListener:
                 await self._send_reply(
                     "🔄 *SPIDY CRYPTO SYSTEM RESET COMPLETE*\n\n"
                     "• All historical setups, active locks, and cooldowns have been cleared.\n"
-                    f"• Capital: *₹{int(settings.ACCOUNT_EQUITY):,}* @ *{settings.DEFAULT_LEVERAGE}x Leverage*.\n"
+                    f"• Allocated Margin: *₹{int(settings.MAX_ALLOWED_MARGIN):,}* @ *{settings.DEFAULT_LEVERAGE}x Leverage* (₹18,000 Position Size).\n"
                     "• Ready to scan all 6 markets fresh! 🚀",
                     chat_id
                 )
@@ -103,52 +135,47 @@ class TelegramBotListener:
     async def _handle_callback(self, cb_id: Optional[str], cb_data: str, chat_id: Optional[str] = None):
         """Executes corresponding action for the tapped button."""
         target_chat = chat_id or self.chat_id
-        toast_text = "Processing..."
-        reply_msg = ""
 
-        if cb_data == "CMD_BE":
-            success, msg = await self.trade_manager.move_to_breakeven()
-            toast_text = "🎯 Stop moved to BE!" if success else "No active trade"
-            reply_msg = (
-                f"🎯 *BREAKEVEN APPLIED*\n\n{msg}\n\n"
-                "Trade is now 100% risk-free! 🛡️"
-                if success else f"⚠️ {msg}"
-            )
-
-        elif cb_data == "CMD_PARTIAL":
-            success, msg = await self.trade_manager.close_partial(0.50)
-            toast_text = "💰 50% Profit Secured!" if success else "No active trade"
-            reply_msg = (
-                f"💰 *50% PARTIAL PROFIT SECURED*\n\n{msg}\n\n"
-                "Remaining position is running towards Target 2! 🚀"
-                if success else f"⚠️ {msg}"
-            )
-
-        elif cb_data == "CMD_CLOSE":
-            success, msg = await self.trade_manager.emergency_close("EMERGENCY CLOSED VIA TELEGRAM BUTTON")
-            toast_text = "🛑 Trade Closed!" if success else "No active trade"
-            reply_msg = (
-                f"🛑 *TRADE CLOSED MANUALLY*\n\n{msg}\n\n"
-                "Global slot is OPEN (0/1). Ready for next setup!"
-                if success else f"⚠️ {msg}"
-            )
-
-        elif cb_data == "CMD_STATUS":
-            toast_text = "⚡ Real-time Telemetry Loaded"
-            if cb_id:
-                await self._answer_callback(cb_id, toast_text)
-            await self._send_status_reply(target_chat)
-            return
-
-        elif cb_data == "CMD_JOURNAL":
-            toast_text = "📖 Loading Daily Journal..."
-            if cb_id:
-                await self._answer_callback(cb_id, toast_text)
-            await self._send_journal_reply(target_chat)
-            return
-
+        # Acknowledge callback immediately to prevent Telegram phone UI spinning
         if cb_id:
-            await self._answer_callback(cb_id, toast_text)
+            asyncio.create_task(self._answer_callback(cb_id, "Processing request..."))
+
+        reply_msg = ""
+        try:
+            if cb_data == "CMD_BE":
+                success, msg = await self.trade_manager.move_to_breakeven()
+                reply_msg = (
+                    f"🎯 *BREAKEVEN APPLIED*\n\n{msg}\n\n"
+                    "Trade is now 100% risk-free! 🛡️"
+                    if success else f"⚠️ {msg}"
+                )
+
+            elif cb_data == "CMD_PARTIAL":
+                success, msg = await self.trade_manager.close_partial(0.50)
+                reply_msg = (
+                    f"💰 *50% PARTIAL PROFIT SECURED*\n\n{msg}\n\n"
+                    "Remaining position is running towards Target 2! 🚀"
+                    if success else f"⚠️ {msg}"
+                )
+
+            elif cb_data == "CMD_CLOSE":
+                success, msg = await self.trade_manager.emergency_close("EMERGENCY CLOSED VIA TELEGRAM BUTTON")
+                reply_msg = (
+                    f"🛑 *TRADE CLOSED MANUALLY*\n\n{msg}\n\n"
+                    "Global slot is OPEN (0/1). Ready for next setup!"
+                    if success else f"⚠️ {msg}"
+                )
+
+            elif cb_data == "CMD_STATUS":
+                await self._send_status_reply(target_chat)
+                return
+
+            elif cb_data == "CMD_JOURNAL":
+                await self._send_journal_reply(target_chat)
+                return
+        except Exception as e:
+            logger.error(f"Error executing callback {cb_data}: {e}")
+            reply_msg = f"⚠️ Command execution error: {e}"
 
         if reply_msg:
             await self._send_reply(reply_msg, target_chat)
@@ -219,7 +246,7 @@ class TelegramBotListener:
         """Replies with dynamic calculations, non-zero PnL, and coin-specific Thinking System in sub-second time."""
         target_chat = chat_id or self.chat_id
         live_prices = await self._fetch_live_tickers()
-        at = self.trade_manager.active_trade
+        at = self.trade_manager.active_trade or self.trade_manager.db.get_active_trade()
 
         lines = []
         lines.append("⚡ *SPIDY CRYPTO — LIVE TELEMETRY & THINKING REPORT*")

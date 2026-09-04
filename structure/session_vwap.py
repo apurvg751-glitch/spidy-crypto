@@ -5,6 +5,9 @@ from typing import List, Optional
 from market_data.models import Candle
 
 
+from config.precision import round_price, format_price, get_symbol_tick_size
+
+
 @dataclass
 class SessionVWAPResult:
     session_name: str
@@ -48,7 +51,12 @@ class SessionVWAPEngine:
             return "Asia Session", asia_start
 
     @classmethod
-    def calculate(cls, candles_5m: List[Candle], current_price: Optional[float] = None) -> Optional[SessionVWAPResult]:
+    def calculate(
+        cls,
+        candles_5m: List[Candle],
+        current_price: Optional[float] = None,
+        symbol: str = "ETHUSD"
+    ) -> Optional[SessionVWAPResult]:
         if not candles_5m or len(candles_5m) < 5:
             return None
 
@@ -67,9 +75,10 @@ class SessionVWAPEngine:
         typical_prices = []
         volumes = []
 
-        # POC tracking (histogram with bin size ~ 0.05% of price)
+        # POC tracking (histogram with bin size ~ 0.05% of price, bounded by symbol tick size)
         curr = current_price or candles_5m[-1].close
-        bin_size = max(0.01, curr * 0.0005)
+        tick_size = get_symbol_tick_size(symbol)
+        bin_size = max(tick_size, curr * 0.0005)
         volume_by_bin = {}
 
         for c in session_candles:
@@ -107,29 +116,29 @@ class SessionVWAPEngine:
             relation = "ABOVE_VAH"
             bias = "BEARISH_PREMIUM"
             confluence = 10
-            desc = f"Price ({ref_price:.2f}) ABOVE VAH ({vah:.2f}) | Extended Premium (Reversal Bias)"
+            desc = f"Price ({format_price(symbol, ref_price)}) ABOVE VAH ({format_price(symbol, vah)}) | Extended Premium (Reversal Bias)"
         elif ref_price < val:
             relation = "BELOW_VAL"
             bias = "BULLISH_DISCOUNT"
             confluence = 10
-            desc = f"Price ({ref_price:.2f}) BELOW VAL ({val:.2f}) | Extended Discount (Rebound Bias)"
+            desc = f"Price ({format_price(symbol, ref_price)}) BELOW VAL ({format_price(symbol, val)}) | Extended Discount (Rebound Bias)"
         else:
             relation = "INSIDE_VALUE_AREA"
             if ref_price >= vwap:
                 bias = "NEUTRAL_BULLISH"
                 confluence = 5
-                desc = f"Price ({ref_price:.2f}) above VWAP ({vwap:.2f}) inside Value Area (VAH: {vah:.2f}, POC: {poc:.2f})"
+                desc = f"Price ({format_price(symbol, ref_price)}) above VWAP ({format_price(symbol, vwap)}) inside Value Area (VAH: {format_price(symbol, vah)}, POC: {format_price(symbol, poc)})"
             else:
                 bias = "NEUTRAL_BEARISH"
                 confluence = 5
-                desc = f"Price ({ref_price:.2f}) below VWAP ({vwap:.2f}) inside Value Area (VAL: {val:.2f}, POC: {poc:.2f})"
+                desc = f"Price ({format_price(symbol, ref_price)}) below VWAP ({format_price(symbol, vwap)}) inside Value Area (VAL: {format_price(symbol, val)}, POC: {format_price(symbol, poc)})"
 
         return SessionVWAPResult(
             session_name=session_name,
-            vwap=round(vwap, 2),
-            vah=round(vah, 2),
-            val=round(val, 2),
-            poc=round(poc, 2),
+            vwap=round_price(symbol, vwap),
+            vah=round_price(symbol, vah),
+            val=round_price(symbol, val),
+            poc=round_price(symbol, poc),
             current_relation=relation,
             bias_confluence=bias,
             confluence_score=confluence,

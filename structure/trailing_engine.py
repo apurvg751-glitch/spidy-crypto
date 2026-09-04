@@ -6,6 +6,9 @@ from market_data.models import Candle
 logger = logging.getLogger("spidy.structure.trailing")
 
 
+from config.precision import round_price
+
+
 @dataclass
 class TrailingResult:
     new_stop: float
@@ -22,7 +25,7 @@ class TrailingStopEngine:
     1. Milestone R-Ratcheting (+1.5R -> +0.5R, +2.0R -> +1.0R, +3.0R -> +2.0R)
     2. Dynamic 1.5x ATR Structural Trail behind peak favorable excursion
     3. Swing High/Low protection
-    Guarantees stop only ever moves in the direction of profit.
+    Guarantees stop only ever moves in the direction of profit without premature stop-outs.
     """
 
     @staticmethod
@@ -34,7 +37,8 @@ class TrailingStopEngine:
         current_price: float,
         peak_favorable_price: float,
         atr: float,
-        candles_5m: Optional[List[Candle]] = None
+        candles_5m: Optional[List[Candle]] = None,
+        symbol: str = "ETHUSD"
     ) -> TrailingResult:
         risk = abs(entry - original_stop)
         if risk <= 0:
@@ -93,6 +97,9 @@ class TrailingStopEngine:
                     recent_high = max(c.high for c in recent_closed)
                     swing_stop = recent_high
 
+        # Minimum breathing room buffer to prevent premature stop-out on normal market noise
+        breathing_room = max(0.8 * atr, entry * 0.0040)
+
         # 5. Determine best proposed stop
         if direction == "LONG":
             # Must be above current_stop, choose best protection
@@ -105,12 +112,14 @@ class TrailingStopEngine:
                 candidates.append(swing_stop)
 
             proposed = max(candidates)
-            # Guard against setting stop above current price
-            proposed = min(proposed, current_price - (0.2 * atr))
+            # Guard against setting stop too close to current price
+            max_allowed_stop = current_price - breathing_room
+            if proposed > max_allowed_stop:
+                proposed = max_allowed_stop
 
             if proposed > current_stop + (0.05 * risk):
                 reason = f"Ratchet: Locked {locked_r:.1f}R (Peak: +{achieved_r:.2f}R)" if proposed == milestone_stop else f"ATR/Structure Trail at {proposed:.2f}"
-                return TrailingResult(round(proposed, 4), True, reason, locked_r, round(achieved_r, 2))
+                return TrailingResult(round_price(symbol, proposed), True, reason, locked_r, round(achieved_r, 2))
         else:
             # SHORT: Must be below current_stop
             candidates = [current_stop]
@@ -122,11 +131,13 @@ class TrailingStopEngine:
                 candidates.append(swing_stop)
 
             proposed = min(candidates)
-            # Guard against setting stop below current price
-            proposed = max(proposed, current_price + (0.2 * atr))
+            # Guard against setting stop too close to current price
+            min_allowed_stop = current_price + breathing_room
+            if proposed < min_allowed_stop:
+                proposed = min_allowed_stop
 
             if proposed < current_stop - (0.05 * risk):
                 reason = f"Ratchet: Locked {locked_r:.1f}R (Peak: +{achieved_r:.2f}R)" if proposed == milestone_stop else f"ATR/Structure Trail at {proposed:.2f}"
-                return TrailingResult(round(proposed, 4), True, reason, locked_r, round(achieved_r, 2))
+                return TrailingResult(round_price(symbol, proposed), True, reason, locked_r, round(achieved_r, 2))
 
         return TrailingResult(current_stop, False, "No trailing adjustment required", locked_r, round(achieved_r, 2))

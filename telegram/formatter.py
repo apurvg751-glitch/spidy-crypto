@@ -1,15 +1,10 @@
-from typing import Any
+from typing import Any, Optional
+from config.precision import format_price, get_symbol_precision
 
 
 def format_coin_price(coin: str, price: float) -> str:
     """Formats price according to Delta Exchange precision specifications."""
-    if coin == "XRPUSD":
-        return f"${price:,.4f}"
-    elif coin == "AVAXUSD":
-        return f"${price:,.3f}"
-    elif coin == "BTCUSD":
-        return f"${price:,.1f}"
-    return f"${price:,.2f}"
+    return format_price(coin, price)
 
 
 def format_main_alert(setup: dict[str, Any]) -> str:
@@ -48,6 +43,8 @@ def format_main_alert(setup: dict[str, Any]) -> str:
     if status == "WAITING":
         status = "WAITING"
 
+    prec = get_symbol_precision(coin)
+
     return (
         f"🕷️ SPIDY CRYPTO — TRADE DETECTED\n"
         f"TRADE SETUP DETECTED\n\n"
@@ -68,12 +65,12 @@ def format_main_alert(setup: dict[str, Any]) -> str:
         f"BOS: {bos_text} (✓)\n"
         f"Retest: Confirmed (✓)\n"
         f"Volume: {vol_text} (✓)\n\n"
-        f"Entry: {entry:.2f}\n"
-        f"Stop: {stop:.2f}\n"
-        f"SL: {stop:.2f}\n"
-        f"Target 1: {t1:.2f}\n"
-        f"Target 2: {t2:.2f}\n"
-        f"TP: {tp:.2f}\n"
+        f"Entry: {float(entry):.{prec}f}\n"
+        f"Stop: {float(stop):.{prec}f}\n"
+        f"SL: {float(stop):.{prec}f}\n"
+        f"Target 1: {float(t1):.{prec}f}\n"
+        f"Target 2: {float(t2):.{prec}f}\n"
+        f"TP: {float(tp):.{prec}f}\n"
         f"RR: 1:{rr:.1f}\n\n"
         f"Status: {status}\n\n"
         f"Other markets remain monitored but new trades are globally blocked while this trade is active.\n"
@@ -105,7 +102,22 @@ def format_lifecycle_alert(
         "TRAILING_STOP": "📈"
     }.get(status, "🕷️")
 
-    header_status = f"TRADE {status}" if status in ("ACTIVE", "TRAILING_STOP") else status
+    # Clear English Lifecycle & Exit Header
+    if "Trailing Stop Loss Hit" in details or "Trailing Stop" in details:
+        header_status = "TRAILING STOP LOSS HIT (PROFIT SECURED 🔒)"
+        status_emoji = "📈"
+    elif "Original Stop Loss Hit" in details or "Stop loss hit" in details:
+        header_status = "STOP LOSS HIT (RISK PROTECTED 🛡️)"
+        status_emoji = "🛑"
+    elif "Manually Closed" in details or "MANUALLY CLOSED" in details:
+        header_status = "MANUALLY CLOSED VIA TELEGRAM BUTTON ✋"
+        status_emoji = "✋"
+    elif "Target" in details or "TP" in details:
+        header_status = "TARGET HIT (PROFIT SECURED 🎯)"
+        status_emoji = "🎯"
+    else:
+        header_status = f"TRADE {status}" if status in ("ACTIVE", "TRAILING_STOP") else status
+
     is_terminal = status in ("STOPPED", "CANCELLED", "COMPLETED")
 
     lines = [
@@ -155,7 +167,7 @@ def format_lifecycle_alert(
             lines.append(f"Realized PnL: -₹{abs(pnl_val):,.2f} 🔴")
 
     if details:
-        lines.append(f"Details: {details}")
+        lines.append(f"Exit Reason: {details}")
 
     if is_terminal:
         lines.append("\nGlobal trade lock released. SPIDY CRYPTO is analyzing ETH, BTC, SOL for the next setup.")

@@ -117,14 +117,16 @@ class Model9LiquiditySweepReversal(BaseStrategyModel):
         if not levels.is_valid:
             return None
 
+        from indicators.volume import calculate_rvol
+
         trend_15m = get_trend_bias(c15)
         score_breakdown = calculate_setup_score(
-            trend_aligned=(trend_15m in ("Bullish", "Bearish")),
+            trend_aligned=(trend_15m == ("Bullish" if direction == "LONG" else "Bearish")),
             trend_neutral=(trend_15m == "Neutral"),
             sweep_confirmed=True,
             bos_confirmed=True,
             volume_confirmed=confirmations.volume_ok,
-            rvol=atr_5m,
+            rvol=calculate_rvol(c5),
             risk_reward=levels.risk_reward
         )
 

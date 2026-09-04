@@ -202,7 +202,7 @@ def test_telegram_alert_formatting():
 @pytest.mark.asyncio
 async def test_duplicate_telegram_alerts_blocked(temp_db):
     """Gate 8: Duplicate Telegram alerts are blocked by anti-spam guard."""
-    notifier = TelegramNotifier(db=temp_db)
+    notifier = TelegramNotifier(db=temp_db, bot_token="MOCK_TOKEN", chat_id="12345")
 
     setup_dict = {
         "id": "ETHUSD_LONG_1700000000_2385",

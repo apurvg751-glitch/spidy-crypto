@@ -295,6 +295,7 @@ class SetupDetector:
             Model10InstitutionalSniper()
         ]
 
+        from config.precision import round_price
         from structure.equilibrium import EquilibriumEngine
         from indicators.displacement import DisplacementEngine
         from structure.barrier_engine import BarrierEngine
@@ -307,8 +308,8 @@ class SetupDetector:
         # Use 100% completed, closed candles (eliminate mid-candle tick fluctuations)
         c5 = market.candles_5m
         c15 = market.candles_15m
-        closed_5m = c5[:-1] if len(c5) > 1 else c5
-        closed_15m = c15[:-1] if len(c15) > 1 else c15
+        closed_5m = c5[:-1] if (c5 and not c5[-1].is_closed) else c5
+        closed_15m = c15[:-1] if (c15 and not c15[-1].is_closed) else c15
         ref_price = closed_5m[-1].close if closed_5m else market.current_price
 
         closed_market = market.model_copy(update={
@@ -340,7 +341,7 @@ class SetupDetector:
                 grade_res = SetupGradingEngine.grade_setup(
                     direction=cand.direction,
                     current_price=cand.entry,
-                    setup_score=int(cand.setup_score * kz.confidence_multiplier) if kz.is_active_kill_zone else cand.setup_score,
+                    setup_score=int(cand.setup_score * kz.confidence_multiplier),
                     confirmations=cand.confirmations,
                     mtf_context=market.mtf_context,
                     dealing_range=dr,
@@ -359,7 +360,7 @@ class SetupDetector:
                 min_risk = max(cand_atr * 0.60, cand.entry * 0.0035)
                 current_risk = abs(cand.entry - cand.stop_loss)
                 if current_risk < min_risk:
-                    cand.stop_loss = round((cand.entry - min_risk) if cand.direction == "LONG" else (cand.entry + min_risk), 2)
+                    cand.stop_loss = round_price(cand.coin, (cand.entry - min_risk) if cand.direction == "LONG" else (cand.entry + min_risk))
 
                 # Snap targets to real physical swing structure (Draw on Liquidity)
                 snapped = TargetSnapper.snap_targets(
@@ -369,7 +370,8 @@ class SetupDetector:
                     candles_15m=closed_15m,
                     dealing_range=dr,
                     atr=cand_atr,
-                    min_rr=1.6
+                    min_rr=1.6,
+                    symbol=cand.coin
                 )
 
                 # HARD REJECTION GATE: TP1 MUST provide at least 1.6R clearance
@@ -388,6 +390,17 @@ class SetupDetector:
                     logger.info(f"Setup {cand.id} ({cand.coin}) REJECTED by Re-entry Gate: {reentry_reason}")
                     continue
 
+                # LIVE PRICE BOUNDS CHECK: Never activate stale setups if live price already touched SL or TP
+                if ref_price > 0:
+                    if cand.direction == "LONG" and (ref_price <= cand.stop_loss or ref_price >= snapped.target_1):
+                        logger.info(f"Setup {cand.id} ({cand.coin}) REJECTED: Live price ({ref_price}) out of bounds (SL: {cand.stop_loss}, T1: {snapped.target_1})")
+                        continue
+                    if cand.direction == "SHORT" and (ref_price >= cand.stop_loss or ref_price <= snapped.target_1):
+                        logger.info(f"Setup {cand.id} ({cand.coin}) REJECTED: Live price ({ref_price}) out of bounds (SL: {cand.stop_loss}, T1: {snapped.target_1})")
+                        continue
+
+                cand.entry = snapped.entry
+                cand.stop_loss = snapped.stop_loss
                 cand.target_1 = snapped.target_1
                 cand.target_2 = snapped.target_2
                 cand.rr = snapped.rr_2

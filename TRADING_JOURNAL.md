@@ -3,10 +3,10 @@
 **Trader:** Apurv Gupta  
 **System:** SPIDY CRYPTO 2.0 (Autonomous Trading Intelligence)  
 **Exchange:** Delta Exchange India  
-**Base Account Capital:** ₹35,000.00  
-**Current Account Equity:** ₹35,350.00 (+1.00% Growth)  
-**Risk per Trade:** 1.50% (₹525.00 / 1R)  
-**Leverage:** 1x Spot Leverage  
+**Allocated Margin:** ₹3,000.00  
+**Position Size (Notional):** ₹18,000.00  
+**Leverage:** 6x Leverage  
+**Risk per Trade:** Evaluated on ₹3,000 Margin (1.50% / ₹45.00 / 1R)  
 
 ---
 
@@ -47,7 +47,7 @@
 ## 🛡️ Risk Management & Discipline Audit
 
 * **Revenge Trading Guard:** **0 Violations**. The 1-trade global lock strictly prevented multi-position over-exposure.
-* **Capital Preservation:** No trade exceeded the 1.5% (₹525.00) maximum risk boundary.
+* **Capital Preservation:** No trade exceeded the 1.5% maximum risk boundary on ₹3,000 margin.
 * **Re-entry Gatekeeper:** Post-trade cooldown (4 bars) enforced on XRPUSD to prevent low-quality re-entries.
 * **Trailing Engine:** Evaluated continuously against incoming Delta WebSocket ticks.
 

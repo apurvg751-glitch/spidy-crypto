@@ -100,8 +100,10 @@ class Model5BreakoutRetest(BaseStrategyModel):
         if not confirmations.is_qualified:
             return None
 
+        from indicators.volume import calculate_rvol
+
         trend_15m = get_trend_bias(c15)
-        extreme = range_low if breakout_dir == "LONG" else range_high
+        extreme = (break_level - atr_5m * 0.5) if breakout_dir == "LONG" else (break_level + atr_5m * 0.5)
         levels = RiskEngine.calculate_levels(
             direction=breakout_dir,
             current_price=curr_price,
@@ -118,7 +120,7 @@ class Model5BreakoutRetest(BaseStrategyModel):
             sweep_confirmed=False,
             bos_confirmed=True,
             volume_confirmed=confirmations.volume_ok,
-            rvol=c5[-1].volume / max(1.0, c5[-2].volume),
+            rvol=calculate_rvol(c5),
             risk_reward=levels.risk_reward
         )
         if score_breakdown.total_score < settings.MIN_SETUP_SCORE:

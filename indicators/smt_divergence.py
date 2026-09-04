@@ -24,7 +24,8 @@ class SMTDivergenceEngine:
         cls,
         candles_btc: List[Candle],
         candles_eth: List[Candle],
-        lookback: int = 24
+        lookback: int = 24,
+        direction: Optional[str] = None
     ) -> SMTResult:
         if not candles_btc or not candles_eth or len(candles_btc) < 4 or len(candles_eth) < 4:
             return SMTResult(

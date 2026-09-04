@@ -543,4 +543,260 @@ footer {
   box-shadow: 0 0 8px var(--cyan-neon);
 }
 
+/* ==========================================================================
+   Dedicated Active Trade War Room & Standby Banners
+   ========================================================================== */
+.war-room-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(0, 240, 255, 0.08) 100%);
+  border: 1px solid var(--emerald-neon);
+  border-radius: 10px;
+  padding: 14px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: warRoomPulse 3s infinite ease-in-out;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+@keyframes warRoomPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(16, 185, 129, 0.2); }
+  50% { box-shadow: 0 0 35px rgba(16, 185, 129, 0.45); }
+}
+
+.war-room-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 320px;
+}
+
+.war-room-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.war-room-pulse-dot {
+  width: 10px;
+  height: 10px;
+  background-color: var(--emerald-neon);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--emerald-neon);
+  animation: pulseDot 1.2s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+
+.war-room-dir-badge {
+  font-family: var(--font-mono);
+  font-weight: 900;
+  font-size: 14px;
+  letter-spacing: 0.8px;
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+
+.war-room-dir-badge.LONG {
+  background: rgba(16, 185, 129, 0.25);
+  color: var(--emerald-neon);
+  border: 1px solid var(--emerald-neon);
+}
+
+.war-room-dir-badge.SHORT {
+  background: rgba(244, 63, 94, 0.25);
+  color: var(--rose-neon);
+  border: 1px solid var(--rose-neon);
+}
+
+.war-room-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.war-room-pill.grade {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--amber-neon);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+}
+
+.war-room-pill.score {
+  background: rgba(0, 240, 255, 0.15);
+  color: var(--cyan-neon);
+  border: 1px solid rgba(0, 240, 255, 0.4);
+}
+
+.war-room-pill.model {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.war-room-matrix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+}
+
+.matrix-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.matrix-lbl {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
+
+.matrix-val {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.matrix-val.cyan { color: var(--cyan-neon); }
+.matrix-val.rose { color: var(--rose-neon); }
+.matrix-val.emerald { color: var(--emerald-neon); }
+.matrix-val.amber { color: var(--amber-neon); }
+
+.war-room-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.war-room-pnl-box {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 16px;
+  text-align: right;
+  min-width: 170px;
+}
+
+.pnl-subhead {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.6px;
+}
+
+.pnl-main-value {
+  font-size: 18px;
+  font-weight: 900;
+  font-family: var(--font-mono);
+  color: var(--emerald-neon);
+  margin-top: 2px;
+}
+
+.pnl-r-value {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--cyan-neon);
+}
+
+.war-room-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wt-act-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.wt-act-btn:hover {
+  transform: translateY(-1px);
+}
+
+.wt-act-btn.be {
+  border-color: var(--cyan-neon);
+  color: var(--cyan-neon);
+}
+.wt-act-btn.be:hover {
+  background: var(--cyan-neon);
+  color: #000;
+  box-shadow: 0 0 10px var(--cyan-neon);
+}
+
+.wt-act-btn.partial {
+  border-color: var(--emerald-neon);
+  color: var(--emerald-neon);
+}
+.wt-act-btn.partial:hover {
+  background: var(--emerald-neon);
+  color: #000;
+  box-shadow: 0 0 10px var(--emerald-neon);
+}
+
+.wt-act-btn.close {
+  border-color: var(--rose-neon);
+  color: var(--rose-neon);
+}
+.wt-act-btn.close:hover {
+  background: var(--rose-neon);
+  color: #fff;
+  box-shadow: 0 0 10px var(--rose-neon);
+}
+
+.wt-act-btn.view {
+  border-color: var(--purple-neon);
+  color: var(--purple-neon);
+}
+.wt-act-btn.view:hover {
+  background: var(--purple-neon);
+  color: #fff;
+  box-shadow: 0 0 10px var(--purple-neon);
+}
+
+.standby-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* In-Trade glowing card indicator */
+.market-card.in-trade {
+  border-color: var(--emerald-neon) !important;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35) !important;
+  animation: cardInTradePulse 2s infinite ease-in-out;
+}
+
+@keyframes cardInTradePulse {
+  0%, 100% { border-color: var(--emerald-neon); }
+  50% { border-color: var(--cyan-neon); }
+}
+
+
 

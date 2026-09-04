@@ -88,13 +88,15 @@ class Model3ObFvg(BaseStrategyModel):
         if not levels.is_valid:
             return None
 
+        from indicators.volume import calculate_rvol
+
         score_breakdown = calculate_setup_score(
             trend_aligned=True,
             trend_neutral=False,
             sweep_confirmed=False,
             bos_confirmed=True,
             volume_confirmed=confirmations.volume_ok,
-            rvol=c5[-1].volume / max(1.0, c5[-2].volume),
+            rvol=calculate_rvol(c5),
             risk_reward=levels.risk_reward
         )
         if score_breakdown.total_score < settings.MIN_SETUP_SCORE:

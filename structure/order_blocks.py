@@ -27,7 +27,7 @@ class OrderBlockEngine:
         order_blocks: list[OrderBlock] = []
 
         # Find impulse candles (body > 60% of range and large volume)
-        for i in range(start_idx, n - 2):
+        for i in range(start_idx, n - 1):
             curr = candles[i]
             next_bar = candles[i + 1]
 

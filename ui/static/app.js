@@ -8,6 +8,20 @@ let marketStates = {};
 let coinAnalysisData = {};
 let selectedModelId = "MODEL_7";
 
+function getSymbolPrecision(sym) {
+    if (sym === "XRPUSD") return 4;
+    if (sym === "AVAXUSD") return 3;
+    if (sym === "BTCUSD") return 1;
+    return 2;
+}
+
+function formatPrice(sym, val) {
+    if (val === null || val === undefined || isNaN(val)) return "--";
+    return Number(val).toFixed(getSymbolPrecision(sym));
+}
+
+let userManuallySelectedSymbol = false;
+
 document.addEventListener("DOMContentLoaded", () => {
     initWebSocket();
     fetchStatus();
@@ -20,6 +34,7 @@ document.addEventListener("DOMContentLoaded", () => {
         card.addEventListener("click", () => {
             const sym = card.dataset.symbol;
             if (sym) {
+                userManuallySelectedSymbol = true;
                 selectSymbol(sym);
             }
         });
@@ -55,6 +70,24 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnRelease = document.getElementById("btn-release-lock");
     if (btnRelease) btnRelease.addEventListener("click", releaseActiveTradeLock);
 
+    // Dedicated War Room Action Buttons
+    const btnWtBe = document.getElementById("btn-wt-be");
+    if (btnWtBe) btnWtBe.addEventListener("click", triggerBreakeven);
+
+    const btnWtPartial = document.getElementById("btn-wt-partial");
+    if (btnWtPartial) btnWtPartial.addEventListener("click", triggerPartial);
+
+    const btnWtClose = document.getElementById("btn-wt-close");
+    if (btnWtClose) btnWtClose.addEventListener("click", releaseActiveTradeLock);
+
+    const btnWtView = document.getElementById("btn-wt-view");
+    if (btnWtView) btnWtView.addEventListener("click", () => {
+        if (activeTrade && activeTrade.coin) {
+            userManuallySelectedSymbol = true;
+            selectSymbol(activeTrade.coin);
+        }
+    });
+
     // Polling fallback to ensure connection is always resilient
     setInterval(() => {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -80,15 +113,10 @@ function selectSymbol(sym) {
 
     // 3. Update price levels locally ONLY if there is an active trade on this coin
     if (activeTrade && activeTrade.coin === sym && (activeTrade.trade_status === "ACTIVE" || activeTrade.trade_status === "WAITING")) {
-        let dec = 2;
-        if (sym === "XRPUSD") dec = 4;
-        else if (sym === "AVAXUSD") dec = 3;
-        else if (sym === "BTCUSD") dec = 1;
-
-        document.getElementById("val-entry").textContent = Number(activeTrade.entry).toFixed(dec);
-        document.getElementById("val-stop").textContent = Number(activeTrade.stop_loss).toFixed(dec);
-        document.getElementById("val-t1").textContent = Number(activeTrade.target_1).toFixed(dec);
-        document.getElementById("val-t2").textContent = Number(activeTrade.target_2).toFixed(dec);
+        document.getElementById("val-entry").textContent = formatPrice(sym, activeTrade.entry);
+        document.getElementById("val-stop").textContent = formatPrice(sym, activeTrade.stop_loss);
+        document.getElementById("val-t1").textContent = formatPrice(sym, activeTrade.target_1);
+        document.getElementById("val-t2").textContent = formatPrice(sym, activeTrade.target_2);
         document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 3000).toLocaleString('en-IN')} (6x Leverage)`;
 
         const dirBadge = document.getElementById("trade-direction-badge");
@@ -101,7 +129,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹10,000 @ 6x)";
+        document.getElementById("val-margin").textContent = "Idle (₹3,000 Margin @ 6x)";
 
         const m = marketStates[sym];
         const dirBadge = document.getElementById("trade-direction-badge");
@@ -305,6 +333,9 @@ function updateHUD(data) {
         lockText.textContent = "SLOT OPEN (0/1)";
     }
 
+    // Render Dedicated Active Trade War Room Banner
+    renderActiveTradeWarRoom(activeTrade);
+
     // Refresh tactical panel for currently selected coin
     fetchCoinAnalysis(currentSymbol);
 
@@ -333,10 +364,16 @@ function updatePrice(symbol, price, isStale, connStatus) {
         if (isStale) {
             statusEl.textContent = "STALE DATA";
             statusEl.style.color = "var(--rose-neon)";
+        } else if (activeTrade && activeTrade.coin === symbol && (activeTrade.trade_status === "ACTIVE" || activeTrade.trade_status === "WAITING")) {
+            statusEl.textContent = `🚨 IN TRADE (${activeTrade.direction})`;
+            statusEl.style.color = activeTrade.direction === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
         } else {
-            statusEl.textContent = connStatus || "ACTIVE";
+            statusEl.textContent = connStatus || "SCANNING";
             statusEl.style.color = "var(--emerald-neon)";
         }
+    }
+    if (activeTrade && activeTrade.coin === symbol) {
+        renderActiveTradeWarRoom(activeTrade);
     }
     if (symbol === currentSymbol) {
         drawChart();
@@ -417,18 +454,17 @@ function renderTacticalPanel(data) {
 
     // Dynamic Levels tailored to this coin: ONLY when active trade is open!
     if (data.is_active_trade && data.levels) {
-        const dec = sym === "XRPUSD" ? 4 : 2;
-        document.getElementById("val-entry").textContent = Number(data.levels.entry).toFixed(dec);
-        document.getElementById("val-stop").textContent = Number(data.levels.stop_loss).toFixed(dec);
-        document.getElementById("val-t1").textContent = Number(data.levels.target_1).toFixed(dec);
-        document.getElementById("val-t2").textContent = Number(data.levels.target_2).toFixed(dec);
-        document.getElementById("val-margin").textContent = data.levels.margin || "₹250 Cap";
+        document.getElementById("val-entry").textContent = formatPrice(sym, data.levels.entry);
+        document.getElementById("val-stop").textContent = formatPrice(sym, data.levels.stop_loss);
+        document.getElementById("val-t1").textContent = formatPrice(sym, data.levels.target_1);
+        document.getElementById("val-t2").textContent = formatPrice(sym, data.levels.target_2);
+        document.getElementById("val-margin").textContent = data.levels.margin || "₹3,000 Margin (6x Lev)";
     } else {
         document.getElementById("val-entry").textContent = "--";
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹35,000 @ 1x)";
+        document.getElementById("val-margin").textContent = "Idle (₹3,000 Margin @ 6x)";
     }
 
     // Dynamic Progression Bar (reflects exact progression of this coin!)
@@ -524,8 +560,8 @@ function renderHistoryTable(items) {
             <td style="color:${dirColor}; font-weight:700;">${item.direction}</td>
             <td><strong style="color:var(--cyan-neon);">${item.setup_score}</strong>/100</td>
             <td style="color:var(--purple-neon); font-weight:700;">${confText}</td>
-            <td>${item.entry ? item.entry.toFixed(2) : '-'}</td>
-            <td>${item.stop_loss ? item.stop_loss.toFixed(2) : '-'}</td>
+            <td>${item.entry ? formatPrice(item.coin, item.entry) : '-'}</td>
+            <td>${item.stop_loss ? formatPrice(item.coin, item.stop_loss) : '-'}</td>
             <td>1:${item.rr ? item.rr.toFixed(1) : '-'}</td>
             <td>${statusBadge}</td>
             <td style="font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${item.rejection_reason || item.final_result || ''}">
@@ -803,3 +839,142 @@ async function simulateSetup(dir) {
         console.error("Simulation error", e);
     }
 }
+
+function renderActiveTradeWarRoom(at) {
+    const banner = document.getElementById("global-active-trade-banner");
+    const standby = document.getElementById("global-standby-banner");
+    if (!banner || !standby) return;
+
+    if (!at || (at.trade_status !== "ACTIVE" && at.trade_status !== "WAITING")) {
+        banner.style.display = "none";
+        standby.style.display = "flex";
+        document.querySelectorAll(".market-card").forEach(c => {
+            c.classList.remove("in-trade");
+            const sym = c.dataset.symbol;
+            const stEl = document.getElementById(`status-${sym}`);
+            if (stEl && stEl.textContent.includes("IN TRADE")) {
+                stEl.textContent = "SCANNING";
+                stEl.style.color = "var(--emerald-neon)";
+            }
+        });
+        return;
+    }
+
+    // Active trade is LIVE!
+    banner.style.display = "flex";
+    standby.style.display = "none";
+
+    const sym = at.coin;
+    const dir = (at.direction || "LONG").toUpperCase();
+    const entry = Number(at.entry || 0);
+    const sl = Number(at.stop_loss || 0);
+    const t1 = Number(at.target_1 || 0);
+    const t2 = Number(at.target_2 || 0);
+    const margin = Number(at.margin_used || 3000);
+    const lev = Number(at.leverage || 6);
+
+    // Header badge group
+    const dirBadge = document.getElementById("wt-coin-dir");
+    if (dirBadge) {
+        dirBadge.textContent = `${sym} ${dir}`;
+        dirBadge.className = `war-room-dir-badge ${dir}`;
+    }
+
+    const gradeEl = document.getElementById("wt-grade");
+    if (gradeEl) gradeEl.textContent = `GRADE: ${at.grade || 'A+'}`;
+
+    const scoreEl = document.getElementById("wt-score");
+    if (scoreEl) scoreEl.textContent = `SCORE: ${at.setup_score || 85}/100`;
+
+    const modelEl = document.getElementById("wt-model");
+    if (modelEl) modelEl.textContent = at.model_name || "Institutional Strategy";
+
+    // Levels
+    const entryEl = document.getElementById("wt-entry");
+    if (entryEl) entryEl.textContent = `$${formatPrice(sym, entry)}`;
+
+    const stopEl = document.getElementById("wt-stop");
+    if (stopEl) stopEl.textContent = `$${formatPrice(sym, sl)}`;
+
+    const t1El = document.getElementById("wt-t1");
+    if (t1El) t1El.textContent = `$${formatPrice(sym, t1)}`;
+
+    const t2El = document.getElementById("wt-t2");
+    if (t2El) t2El.textContent = `$${formatPrice(sym, t2)}`;
+
+    const marginEl = document.getElementById("wt-margin");
+    if (marginEl) marginEl.textContent = `₹${margin.toLocaleString('en-IN')} (${lev}x)`;
+
+    // Live Mark & Real-time Dynamic PnL calculation
+    let liveP = (marketStates[sym] && marketStates[sym].current_price) ? Number(marketStates[sym].current_price) : (Number(at.current_price) || entry);
+    const markEl = document.getElementById("wt-mark");
+    if (markEl) markEl.textContent = `$${formatPrice(sym, liveP)}`;
+
+    let priceDiff = dir === "LONG" ? (liveP - entry) : (entry - liveP);
+    let pnlPct = entry > 0 ? (priceDiff / entry) * 100 : 0;
+    let pnlInr = margin * (pnlPct / 100) * lev;
+    let riskDist = Math.abs(entry - sl);
+    let achR = riskDist > 0 ? (priceDiff / riskDist) : 0;
+
+    let pnlSign = priceDiff >= 0 ? "+" : "";
+    let pnlColor = priceDiff >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+
+    const pnlEl = document.getElementById("wt-pnl");
+    if (pnlEl) {
+        pnlEl.textContent = `${pnlSign}₹${pnlInr.toFixed(2)} (${pnlSign}${pnlPct.toFixed(2)}%)`;
+        pnlEl.style.color = pnlColor;
+    }
+
+    const rEl = document.getElementById("wt-r");
+    if (rEl) {
+        rEl.textContent = `${pnlSign}${achR.toFixed(2)}R`;
+        rEl.style.color = pnlColor;
+    }
+
+    // Highlight card in market strip
+    document.querySelectorAll(".market-card").forEach(c => {
+        const cardSym = c.dataset.symbol;
+        const stEl = document.getElementById(`status-${cardSym}`);
+        if (cardSym === sym) {
+            c.classList.add("in-trade");
+            if (stEl) {
+                stEl.textContent = `🚨 IN TRADE (${dir})`;
+                stEl.style.color = dir === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
+            }
+        } else {
+            c.classList.remove("in-trade");
+            if (stEl && stEl.textContent.includes("IN TRADE")) {
+                stEl.textContent = "SCANNING";
+                stEl.style.color = "var(--emerald-neon)";
+            }
+        }
+    });
+
+    // Auto-focus on active trade coin if user hasn't explicitly navigated away
+    if (!userManuallySelectedSymbol && currentSymbol !== sym) {
+        selectSymbol(sym);
+    }
+}
+
+async function triggerBreakeven() {
+    try {
+        const res = await fetch("/api/breakeven", { method: "POST" });
+        const data = await res.json();
+        alert(data.message || "Breakeven applied.");
+        fetchStatus();
+    } catch (e) {
+        console.error("Breakeven error", e);
+    }
+}
+
+async function triggerPartial() {
+    try {
+        const res = await fetch("/api/partial", { method: "POST" });
+        const data = await res.json();
+        alert(data.message || "Partial profit secured.");
+        fetchStatus();
+    } catch (e) {
+        console.error("Partial error", e);
+    }
+}
+

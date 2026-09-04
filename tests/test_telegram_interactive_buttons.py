@@ -31,7 +31,9 @@ def test_trade_inline_keyboard_buttons():
 
 @pytest.mark.asyncio
 async def test_trade_manager_remote_actions(temp_db):
-    tm = TradeManager(db=temp_db)
+    mock_telegram = AsyncMock(spec=TelegramNotifier)
+    mock_telegram.send_trade_lifecycle_update = AsyncMock(return_value=True)
+    tm = TradeManager(db=temp_db, telegram=mock_telegram)
     
     # 1. No active trade -> returns False
     be_ok, _ = await tm.move_to_breakeven()

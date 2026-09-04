@@ -116,6 +116,8 @@ class Model1SweepReversal(BaseStrategyModel):
         if not levels.is_valid:
             return None
 
+        from indicators.volume import calculate_rvol
+
         # Setup Confidence Scoring (0 - 100)
         score_breakdown = calculate_setup_score(
             trend_aligned=(trend_15m == trend_bias),
@@ -123,7 +125,7 @@ class Model1SweepReversal(BaseStrategyModel):
             sweep_confirmed=sweep.reclaim_confirmed,
             bos_confirmed=bos.close_confirmed,
             volume_confirmed=confirmations.volume_ok,
-            rvol=c5[-1].volume / max(1.0, c5[-2].volume),
+            rvol=calculate_rvol(c5),
             risk_reward=levels.risk_reward
         )
 

@@ -20,7 +20,8 @@ def temp_db(tmp_path: Path):
 
 @pytest.fixture
 def mock_trade_manager(temp_db):
-    tm = TradeManager(db=temp_db, cooldown_seconds=0)
+    notifier = TelegramNotifier(db=temp_db, bot_token="MOCK_TOKEN", chat_id="12345")
+    tm = TradeManager(db=temp_db, telegram=notifier, cooldown_seconds=0)
     return tm
 
 

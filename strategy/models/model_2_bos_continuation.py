@@ -80,7 +80,9 @@ class Model2BosContinuation(BaseStrategyModel):
         if not confirmations.is_qualified:
             return None
 
-        extreme = min(c.low for c in c5[-5:]) if direction == "LONG" else max(c.high for c in c5[-5:])
+        from indicators.volume import calculate_rvol
+
+        extreme = min(c.low for c in c5[-10:]) if direction == "LONG" else max(c.high for c in c5[-10:])
         levels = RiskEngine.calculate_levels(
             direction=direction,
             current_price=curr_price,
@@ -97,7 +99,7 @@ class Model2BosContinuation(BaseStrategyModel):
             sweep_confirmed=False,
             bos_confirmed=bos.close_confirmed,
             volume_confirmed=confirmations.volume_ok,
-            rvol=c5[-1].volume / max(1.0, c5[-2].volume),
+            rvol=calculate_rvol(c5),
             risk_reward=levels.risk_reward
         )
         if score_breakdown.total_score < settings.MIN_SETUP_SCORE:

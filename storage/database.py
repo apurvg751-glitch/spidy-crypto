@@ -75,7 +75,15 @@ class Database:
                 model_name TEXT DEFAULT 'Liquidity Sweep Reversal',
                 confirmations_count INTEGER DEFAULT 0,
                 peak_favorable_price REAL DEFAULT 0.0,
-                peak_adverse_price REAL DEFAULT 0.0
+                peak_adverse_price REAL DEFAULT 0.0,
+                position_units REAL DEFAULT 0.0,
+                margin_used REAL DEFAULT 0.0,
+                leverage INTEGER DEFAULT 6,
+                original_stop REAL DEFAULT 0.0,
+                grade TEXT DEFAULT 'A+',
+                be_moved INTEGER DEFAULT 0,
+                t1_hit INTEGER DEFAULT 0,
+                partial_closed INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS model_stats (
@@ -171,7 +179,15 @@ class Database:
                 ("model_name", "TEXT DEFAULT 'Liquidity Sweep Reversal'"),
                 ("confirmations_count", "INTEGER DEFAULT 0"),
                 ("peak_favorable_price", "REAL DEFAULT 0.0"),
-                ("peak_adverse_price", "REAL DEFAULT 0.0")
+                ("peak_adverse_price", "REAL DEFAULT 0.0"),
+                ("position_units", "REAL DEFAULT 0.0"),
+                ("margin_used", "REAL DEFAULT 0.0"),
+                ("leverage", "INTEGER DEFAULT 6"),
+                ("original_stop", "REAL DEFAULT 0.0"),
+                ("grade", "TEXT DEFAULT 'A+'"),
+                ("be_moved", "INTEGER DEFAULT 0"),
+                ("t1_hit", "INTEGER DEFAULT 0"),
+                ("partial_closed", "INTEGER DEFAULT 0"),
             ]
             for col_name, col_type in new_trade_cols:
                 if col_name not in existing_trade_cols:
@@ -385,6 +401,9 @@ class Database:
                     d["reasons"] = json.loads(d["reasons"])
                 except Exception:
                     pass
+            d["be_moved"] = bool(d.get("be_moved", 0))
+            d["t1_hit"] = bool(d.get("t1_hit", 0))
+            d["partial_closed"] = bool(d.get("partial_closed", 0))
             return d
 
     def set_active_trade(self, trade: dict[str, Any]):
@@ -395,8 +414,10 @@ class Database:
                 slot_id, setup_id, coin, direction, entry, stop_loss,
                 target_1, target_2, rr, setup_score, trade_status, reasons,
                 activated_timestamp, last_updated_timestamp, model_id, model_name,
-                confirmations_count, peak_favorable_price, peak_adverse_price
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                confirmations_count, peak_favorable_price, peak_adverse_price,
+                position_units, margin_used, leverage, original_stop, grade,
+                be_moved, t1_hit, partial_closed
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(slot_id) DO UPDATE SET
                 setup_id = excluded.setup_id,
                 coin = excluded.coin,
@@ -415,7 +436,15 @@ class Database:
                 model_name = excluded.model_name,
                 confirmations_count = excluded.confirmations_count,
                 peak_favorable_price = excluded.peak_favorable_price,
-                peak_adverse_price = excluded.peak_adverse_price;
+                peak_adverse_price = excluded.peak_adverse_price,
+                position_units = excluded.position_units,
+                margin_used = excluded.margin_used,
+                leverage = excluded.leverage,
+                original_stop = excluded.original_stop,
+                grade = excluded.grade,
+                be_moved = excluded.be_moved,
+                t1_hit = excluded.t1_hit,
+                partial_closed = excluded.partial_closed;
             """, (
                 trade["setup_id"],
                 trade["coin"],
@@ -434,7 +463,15 @@ class Database:
                 trade.get("model_name", "Liquidity Sweep Reversal"),
                 trade.get("confirmations_count", 0),
                 trade.get("peak_favorable_price", trade["entry"]),
-                trade.get("peak_adverse_price", trade["entry"])
+                trade.get("peak_adverse_price", trade["entry"]),
+                trade.get("position_units", 0.0),
+                trade.get("margin_used", 0.0),
+                trade.get("leverage", 6),
+                trade.get("original_stop", trade["stop_loss"]),
+                trade.get("grade", "A+"),
+                1 if trade.get("be_moved") else 0,
+                1 if trade.get("t1_hit") else 0,
+                1 if trade.get("partial_closed") else 0
             ))
 
     def clear_active_trade(self):

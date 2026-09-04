@@ -95,7 +95,7 @@ def calculate_backtest_metrics(trades: list[BacktestTrade]) -> BacktestMetrics:
 
     # Breakdown by market
     by_market = {}
-    for coin in ("ETHUSD", "BTCUSD", "SOLUSD"):
+    for coin in ("BTCUSD", "ETHUSD", "SOLUSD", "BNBUSD", "AVAXUSD", "XRPUSD"):
         m_trades = [t for t in trades if t.coin == coin]
         if m_trades:
             m_wins = len([t for t in m_trades if t.won])

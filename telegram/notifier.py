@@ -131,16 +131,6 @@ class TelegramNotifier:
             logger.info(f"Duplicate alert blocked by anti-spam guard: {alert_id}")
             return False
 
-        import time
-        now = int(time.time())
-        last_sent = getattr(self, "_last_alert_time", {}).get(coin, 0)
-        if (now - last_sent) < 300:
-            logger.info(f"Telegram anti-spam active for {coin} ({now - last_sent}s / 300s). Alert throttled.")
-            return False
-        if not hasattr(self, "_last_alert_time"):
-            self._last_alert_time = {}
-        self._last_alert_time[coin] = now
-
         message = format_main_alert(setup_dict)
         buttons = get_trade_inline_keyboard()
         success = await self.send_message(message, reply_markup=buttons)

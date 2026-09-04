@@ -121,6 +121,45 @@ class LiquidityEngine:
                             description=f"Bearish sweep of BSL {s_high.price:.2f} (wick {c.high:.2f}, closed {c.close:.2f})"
                         )
 
+        # 2-candle Turtle Soup sweep detection (Bar i-1 pierces, Bar i reclaims inside level)
+        for bar_idx in range(n - 1, start_bar, -1):
+            c_reclaim = candles[bar_idx]
+            c_sweep = candles[bar_idx - 1]
+
+            for s_low in reversed(recent_lows[-3:]):
+                if c_sweep.low < s_low.price and c_reclaim.close > s_low.price and c_reclaim.is_bullish:
+                    pen = s_low.price - min(c_sweep.low, c_reclaim.low)
+                    pen_pct = (pen / s_low.price) * 100.0
+                    return LiquiditySweep(
+                        detected=True,
+                        sweep_type="BULLISH",
+                        sweep_level=s_low.price,
+                        extreme_price=min(c_sweep.low, c_reclaim.low),
+                        penetration=round(pen, 4),
+                        penetration_pct=round(pen_pct, 3),
+                        reclaim_confirmed=True,
+                        candle_index=bar_idx,
+                        candle_time=c_reclaim.time,
+                        description=f"2-Candle Bullish sweep & reclaim of SSL {s_low.price:.2f} (extreme {min(c_sweep.low, c_reclaim.low):.2f}, reclaim close {c_reclaim.close:.2f})"
+                    )
+
+            for s_high in reversed(recent_highs[-3:]):
+                if c_sweep.high > s_high.price and c_reclaim.close < s_high.price and c_reclaim.is_bearish:
+                    pen = max(c_sweep.high, c_reclaim.high) - s_high.price
+                    pen_pct = (pen / s_high.price) * 100.0
+                    return LiquiditySweep(
+                        detected=True,
+                        sweep_type="BEARISH",
+                        sweep_level=s_high.price,
+                        extreme_price=max(c_sweep.high, c_reclaim.high),
+                        penetration=round(pen, 4),
+                        penetration_pct=round(pen_pct, 3),
+                        reclaim_confirmed=True,
+                        candle_index=bar_idx,
+                        candle_time=c_reclaim.time,
+                        description=f"2-Candle Bearish sweep & reclaim of BSL {s_high.price:.2f} (extreme {max(c_sweep.high, c_reclaim.high):.2f}, reclaim close {c_reclaim.close:.2f})"
+                    )
+
         return LiquiditySweep()
     @staticmethod
     def find_equal_highs_lows(

@@ -131,7 +131,7 @@ class OrderBookEngine:
         bid_depth = sum(b.size for b in bids[:depth_levels])
         ask_depth = sum(a.size for a in asks[:depth_levels])
 
-        imbalance_ratio = round(bid_depth / max(ask_depth, 1.0), 2)
+        imbalance_ratio = round(bid_depth / max(ask_depth, 1e-4), 2)
         if imbalance_ratio >= 1.30:
             bias = "BULLISH_IMBALANCE"
         elif imbalance_ratio <= 0.77:

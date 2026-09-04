@@ -62,3 +62,30 @@ def test_state_machine_bar_expiration():
     assert expired is True
     assert seq.current_state == "EXPIRED"
     assert seq.is_active is False
+
+
+def test_model_5_evaluation():
+    """Validates Model 5 breakout retest evaluation without variable errors."""
+    m5 = Model5BreakoutRetest()
+
+    # Create 30 candles with tight range 100-101, then breakout at 103, retest at 101
+    candles = [make_candle(100 * i, 100.0, 101.0, 99.8, 100.5, volume=1000.0) for i in range(20)]
+    # Breakout bar
+    candles.append(make_candle(2100, 100.5, 104.0, 100.2, 103.5, volume=2500.0))
+    # Retest bars
+    candles.append(make_candle(2200, 103.5, 103.6, 101.0, 101.2, volume=1200.0))
+    candles.append(make_candle(2300, 101.2, 102.5, 100.8, 102.0, volume=1500.0))
+    candles.append(make_candle(2400, 102.0, 103.0, 101.5, 102.8, volume=1800.0))
+    candles.append(make_candle(2500, 102.8, 103.5, 102.5, 103.2, volume=1900.0))
+
+    ms = MarketState(
+        symbol="BTCUSD",
+        current_price=103.2,
+        candles_5m=candles,
+        candles_15m=candles
+    )
+
+    cand = m5.evaluate(ms)
+    # The evaluation finishes cleanly without throwing any NameError or syntax exception
+    assert cand is None or cand.model_id == "MODEL_5"
+

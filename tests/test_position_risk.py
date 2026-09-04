@@ -7,7 +7,7 @@ def test_position_sizing_margin_cap():
     res = PositionSizer.calculate_position(
         entry=2400.0,
         stop_loss=2380.0,
-        account_equity=10000.0,
+        account_equity=3000.0,
         max_risk_pct=2.0,
         max_allowed_margin=250.0,
         leverage=10
