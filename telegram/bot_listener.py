@@ -269,16 +269,23 @@ class TelegramBotListener:
                 lines.append(f"🪙 *ACTIVE TRADE: {coin} ({direction})* {pnl_emoji}")
                 lines.append(f"• Model: *{model}* | Score: *{score}/100*")
                 lines.append(f"• Status: *{status}* {'(BE Locked 🛡️)' if at.get('be_moved') else ''}")
-                efmt = f"${entry:,.4f}" if coin in ("XRPUSD", "AVAXUSD") else f"${entry:,.2f}"
-                pfmt = f"${current_p:,.4f}" if coin in ("XRPUSD", "AVAXUSD") else f"${current_p:,.2f}"
-                lines.append(f"• Entry: *{efmt}* → Live Delta Price: *{pfmt}*")
-                lines.append(f"• PnL: *{pnl_sign}${price_diff:,.4f} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}" if coin in ("XRPUSD", "AVAXUSD") else f"• PnL: *{pnl_sign}${price_diff:,.2f} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}")
+                def fmt_p(p_val: float) -> str:
+                    if coin == "XRPUSD":
+                        return f"${p_val:,.4f}"
+                    elif coin == "AVAXUSD":
+                        return f"${p_val:,.3f}"
+                    elif coin == "BTCUSD":
+                        return f"${p_val:,.1f}"
+                    return f"${p_val:,.2f}"
+
+                lines.append(f"• Entry: *{fmt_p(entry)}* → Live Delta Mark: *{fmt_p(current_p)}*")
+                lines.append(f"• PnL: *{pnl_sign}{fmt_p(abs(price_diff))} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}")
                 lines.append(f"• R-Multiple: *{pnl_sign}{achieved_r:.2f}R*")
                 lines.append(f"• Live Profit (₹{int(margin):,} Margin @ {lev}x): *{pnl_sign}₹{pnl_inr:,.2f}* {pnl_emoji}")
                 lines.append("")
                 lines.append("🎯 *TARGETS & INVALIDATION*:")
-                lines.append(f"• Stop Loss: *${sl:,.2f}*")
-                lines.append(f"• Target 1: *${t1:,.2f}* | Target 2: *${t2:,.2f}*")
+                lines.append(f"• Stop Loss: *{fmt_p(sl)}*")
+                lines.append(f"• Target 1: *{fmt_p(t1)}* | Target 2: *{fmt_p(t2)}*")
                 lines.append("─────────────────────────")
         else:
             lines.append("🪙 *ACTIVE POSITION*: *NONE (0/1 Global Slot Open)* 🟢")

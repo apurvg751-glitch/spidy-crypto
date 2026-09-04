@@ -80,12 +80,16 @@ function selectSymbol(sym) {
 
     // 3. Update price levels locally ONLY if there is an active trade on this coin
     if (activeTrade && activeTrade.coin === sym && (activeTrade.trade_status === "ACTIVE" || activeTrade.trade_status === "WAITING")) {
-        const dec = sym === "XRPUSD" ? 4 : 2;
+        let dec = 2;
+        if (sym === "XRPUSD") dec = 4;
+        else if (sym === "AVAXUSD") dec = 3;
+        else if (sym === "BTCUSD") dec = 1;
+
         document.getElementById("val-entry").textContent = Number(activeTrade.entry).toFixed(dec);
         document.getElementById("val-stop").textContent = Number(activeTrade.stop_loss).toFixed(dec);
         document.getElementById("val-t1").textContent = Number(activeTrade.target_1).toFixed(dec);
         document.getElementById("val-t2").textContent = Number(activeTrade.target_2).toFixed(dec);
-        document.getElementById("val-margin").textContent = `₹${activeTrade.margin_used || 250}`;
+        document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 3000).toLocaleString('en-IN')} (6x Leverage)`;
 
         const dirBadge = document.getElementById("trade-direction-badge");
         if (dirBadge) {
@@ -97,7 +101,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹35,000 @ 1x)";
+        document.getElementById("val-margin").textContent = "Idle (₹10,000 @ 6x)";
 
         const m = marketStates[sym];
         const dirBadge = document.getElementById("trade-direction-badge");
