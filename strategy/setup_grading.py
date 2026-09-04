@@ -52,13 +52,27 @@ class SetupGradingEngine:
     ) -> SetupGradeResult:
         dir_upper = direction.upper()
 
-        # 1. Check Macro Trend Alignment
+        # 1. Unified Macro Consensus Check (Bans opposing counter-trend setups)
         macro_aligned = False
         if mtf_context:
-            macro_4h = mtf_context.macro_bias_4h.upper()
-            trend_1h = mtf_context.trend_1h.upper()
+            macro_4h = (mtf_context.macro_bias_4h or "").upper()
+            trend_1h = (mtf_context.trend_1h or "").upper()
+
+            # Hard Macro Consensus Lock: 4H Macro Trend Governs All 10 Models
+            if macro_4h == "BEARISH" and dir_upper == "LONG":
+                return SetupGradeResult(
+                    grade="REJECTED",
+                    is_tradeable=False,
+                    summary="Rejected by Unified Macro Consensus: 4H Macro Trend is BEARISH (All Longs Banned)."
+                )
+            if macro_4h == "BULLISH" and dir_upper == "SHORT":
+                return SetupGradeResult(
+                    grade="REJECTED",
+                    is_tradeable=False,
+                    summary="Rejected by Unified Macro Consensus: 4H Macro Trend is BULLISH (All Shorts Banned)."
+                )
+
             if dir_upper == "LONG":
-                # Aligned if 4H is Bullish or 1H is Bullish without Bearish 4H
                 macro_aligned = (macro_4h == "BULLISH") or (trend_1h == "BULLISH" and macro_4h != "BEARISH")
             elif dir_upper == "SHORT":
                 macro_aligned = (macro_4h == "BEARISH") or (trend_1h == "BEARISH" and macro_4h != "BULLISH")
