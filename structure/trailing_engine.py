@@ -48,11 +48,17 @@ class TrailingStopEngine:
         
         achieved_r = max(0.0, fav_distance / risk)
 
-        # 2. Milestone Ratchets
+        # 2. Apex Milestone Ratchets (3-Stage Scaler + 5R Runner Protection)
         locked_r = 0.0
         milestone_stop = current_stop
 
-        if achieved_r >= 3.0:
+        if achieved_r >= 5.0:
+            locked_r = 4.0
+            milestone_stop = entry + (4.0 * risk) if direction == "LONG" else entry - (4.0 * risk)
+        elif achieved_r >= 4.0:
+            locked_r = 3.0
+            milestone_stop = entry + (3.0 * risk) if direction == "LONG" else entry - (3.0 * risk)
+        elif achieved_r >= 3.0:
             locked_r = 2.0
             milestone_stop = entry + (2.0 * risk) if direction == "LONG" else entry - (2.0 * risk)
         elif achieved_r >= 2.0:
@@ -62,8 +68,9 @@ class TrailingStopEngine:
             locked_r = 0.5
             milestone_stop = entry + (0.5 * risk) if direction == "LONG" else entry - (0.5 * risk)
         elif achieved_r >= 0.8:
-            locked_r = 0.0
-            milestone_stop = entry
+            locked_r = 0.05  # Break-Even + Fee Buffer
+            fee_buf = 0.05 * risk
+            milestone_stop = (entry + fee_buf) if direction == "LONG" else (entry - fee_buf)
 
         # 3. ATR Dynamic Trail (active once in >= 1.5R profit)
         atr_buffer = max(1.5 * atr, entry * 0.0035)

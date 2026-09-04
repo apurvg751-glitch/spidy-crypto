@@ -81,6 +81,42 @@ class TelegramNotifier:
             logger.error(f"Failed to deliver Telegram message: {e}")
             return False
 
+    async def send_photo(
+        self,
+        photo_bytes: bytes,
+        caption: str = "",
+        reply_markup: Optional[dict[str, Any]] = None
+    ) -> bool:
+        """Sends an HD chart image to Telegram with optional caption and interactive buttons."""
+        if not self.is_configured or not photo_bytes:
+            return False
+
+        import json
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+        keyboard = reply_markup if reply_markup is not None else get_trade_inline_keyboard()
+
+        data = {
+            "chat_id": self.chat_id,
+            "caption": caption,
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps(keyboard)
+        }
+        files = {
+            "photo": ("spidy_chart.png", photo_bytes, "image/png")
+        }
+
+        try:
+            res = await self.client.post(url, data=data, files=files)
+            if res.status_code == 200:
+                logger.info("Telegram HD Chart Photo delivered successfully.")
+                return True
+            else:
+                logger.warning(f"Telegram sendPhoto HTTP {res.status_code}: {res.text}. Falling back to text.")
+                return await self.send_message(caption, reply_markup=keyboard)
+        except Exception as e:
+            logger.error(f"Failed to deliver Telegram chart photo: {e}")
+            return await self.send_message(caption, reply_markup=keyboard)
+
     async def send_trade_detected_alert(self, setup_dict: dict[str, Any]) -> bool:
         """Sends primary trade detection alert with interactive control buttons."""
         setup_id = setup_dict.get("id")

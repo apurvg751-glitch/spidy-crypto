@@ -225,6 +225,43 @@ async def api_status():
     return get_system_status()
 
 
+@app.get("/api/performance")
+async def api_performance():
+    """Returns official verified institutional track record and performance metrics."""
+    stats = db.get_model_stats()
+    combined = next((s for s in stats if s.get("model_id") == "COMBINED"), {})
+    history = db.get_history(limit=100)
+
+    trades = combined.get("trades_count", 0)
+    wins = combined.get("wins_count", 0)
+    losses = combined.get("losses_count", 0)
+    tot_r = combined.get("total_r", 0.0)
+    pf = combined.get("profit_factor", 0.0)
+    wr = combined.get("win_rate", 0.0)
+    avg_r = combined.get("avg_r", 0.0)
+    risk_unit = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
+    tot_pnl_inr = tot_r * risk_unit
+
+    return {
+        "status": "success",
+        "system_version": "SPIDY MASTER V3.0",
+        "account_equity": settings.ACCOUNT_EQUITY,
+        "risk_unit_inr": risk_unit,
+        "summary": {
+            "total_trades": trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate_pct": wr,
+            "total_r_multiple": tot_r,
+            "total_pnl_inr": round(tot_pnl_inr, 2),
+            "profit_factor": pf,
+            "expectancy_r": avg_r
+        },
+        "model_breakdown": stats,
+        "recent_trades": history[:15]
+    }
+
+
 @app.get("/api/model_stats")
 async def api_model_stats():
     return {"model_stats": db.get_model_stats()}
