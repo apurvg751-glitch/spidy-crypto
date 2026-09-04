@@ -35,9 +35,12 @@ class DetectedSetup(BaseModel):
     bos_confirmed: bool
     bos_details: str
     volume_confirmed: bool
-    volume_details: str
     atr: float
     reasons: list[str] = Field(default_factory=list)
+    dom_imbalance: Optional[str] = None
+    dom_wall: Optional[str] = None
+    funding_rate_pct: Optional[float] = None
+    liquidation_target: Optional[float] = None
 
 
 class SetupEvaluationResult(BaseModel):

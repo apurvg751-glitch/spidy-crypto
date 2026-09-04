@@ -16,6 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from config.settings import settings
 from market_data.feed_manager import FeedManager
 from market_data.models import Candle
+from market_data.l2_book import OrderBookEngine
+from market_data.derivatives_intel import DerivativesIntelEngine
 from strategy.setup_detector import SetupDetector, DetectedSetup
 from strategy.candidate_ranking import CandidateRankingEngine
 from trade_manager.manager import TradeManager
@@ -34,9 +36,12 @@ logger = logging.getLogger("spidy.server")
 db = Database()
 telegram = TelegramNotifier(db=db)
 trade_manager = TradeManager(db=db, telegram=telegram)
+orderbook_engine = OrderBookEngine()
+derivatives_intel_engine = DerivativesIntelEngine()
 feed_manager: Optional[FeedManager] = None
 connected_websockets: list[WebSocket] = []
 scan_task: Optional[asyncio.Task] = None
+
 
 
 async def broadcast_ws(payload: dict[str, Any]):
@@ -867,7 +872,30 @@ async def api_simulate_setup(
     return {"status": "setup_simulated", "setup": setup_dict}
 
 
+@app.get("/api/dom/{symbol}")
+async def get_dom(symbol: str):
+    """Fetches real-time Level-2 Depth of Market, Imbalance Ratio, and Liquidity Walls."""
+    sym = symbol.upper()
+    dom = await orderbook_engine.fetch_l2_book(sym)
+    if not dom:
+        return {"symbol": sym, "error": "Unable to fetch Level-2 order book"}
+    return dom.model_dump()
+
+
+@app.get("/api/liquidation_map/{symbol}")
+async def get_liquidation_map(symbol: str):
+    """Fetches funding rates, sentiment bias, and models 25x/50x/100x retail liquidation pools."""
+    sym = symbol.upper()
+    m = feed_manager.get_market_state(sym) if feed_manager else None
+    p = float(m.current_price) if m and m.current_price else 0.0
+    sh = max((c.high for c in m.candles_15m[-20:]), default=p * 1.02) if m and m.candles_15m else (p * 1.02)
+    sl = min((c.low for c in m.candles_15m[-20:]), default=p * 0.98) if m and m.candles_15m else (p * 0.98)
+    intel = await derivatives_intel_engine.fetch_derivatives_intel(sym, current_price=p, recent_high=sh, recent_low=sl)
+    return intel.model_dump()
+
+
 @app.websocket("/ws")
+
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     connected_websockets.append(ws)
