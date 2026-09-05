@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#00e5ff">
+    <link rel="manifest" href="/static/manifest.json">
     <title>SPIDY CRYPTO — Autonomous Trading Assistant</title>
     <link rel="stylesheet" href="/static/style.css?v=3.8.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,6 +34,10 @@
         <div class="pill" title="Telegram alerts sent to configured chat">
             <span style="color:var(--cyan-neon)">TG ALERTS:</span>
             <span id="tg-status-text" style="color:#fff;">ACTIVE</span>
+        </div>
+        <div class="pill" id="security-pill" style="cursor:pointer; user-select:none;" title="Click to Authenticate or Lock Admin PIN (1408)">
+            <span id="security-lock-icon">🔒</span>
+            <span id="security-status-text" style="color:var(--amber-neon); font-weight:700;">PIN LOCKED</span>
         </div>
     </div>
 </header>
@@ -410,6 +416,19 @@
             </table>
         </div>
     </div>
+<!-- Admin PIN Auth Modal -->
+<div id="pin-modal" style="display:none; position:fixed; z-index:99999; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+    <div style="background:#0b0e14; border:1px solid var(--cyan-neon); border-radius:12px; padding:24px; width:340px; max-width:90%; box-shadow:0 0 30px rgba(0,240,255,0.25); text-align:center;">
+        <div style="font-size:32px; margin-bottom:8px;">🔐</div>
+        <div style="font-size:15px; font-weight:800; color:#fff; font-family:var(--font-mono); margin-bottom:6px;">ADMIN PIN AUTHORIZATION</div>
+        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">Enter your 4-digit security PIN to command SPIDY live controls.</div>
+        <input type="password" id="pin-input" maxlength="8" placeholder="••••" autocomplete="off" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.7); border:1px solid rgba(0,240,255,0.5); border-radius:6px; padding:12px; font-size:24px; letter-spacing:10px; text-align:center; color:var(--cyan-neon); font-family:var(--font-mono); outline:none; margin-bottom:12px;" />
+        <div id="pin-error-msg" style="color:var(--rose-neon); font-size:11px; font-family:var(--font-mono); min-height:16px; margin-bottom:12px;"></div>
+        <div style="display:flex; gap:10px;">
+            <button id="btn-pin-cancel" class="btn" style="flex:1; border-color:var(--border-color); color:var(--text-secondary);">Cancel</button>
+            <button id="btn-pin-submit" class="btn" style="flex:1; border-color:var(--cyan-neon); background:rgba(0,240,255,0.15); color:var(--cyan-neon); font-weight:800;">Unlock</button>
+        </div>
+    </div>
 </div>
 
 <footer>
@@ -417,6 +436,13 @@
     <div>Zero Auto Execution • 6 Models • Multi-Timeframe • Telegram Connected</div>
 </footer>
 
-<script src="/static/app.js?v=3.8.1"></script>
+<script src="/static/app.js?v=3.9.0"></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+        });
+    }
+</script>
 </body>
 </html>

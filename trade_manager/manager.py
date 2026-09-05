@@ -342,27 +342,34 @@ class TradeManager:
                     )
                     self._notify_state_change()
 
-                # 2. Stop Loss Check (tested on pullbacks, not on the exact tick that ratcheted stop)
-                elif direction == "LONG" and current_price <= self.active_trade["stop_loss"]:
-                    orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
-                    is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] > orig_stop)
-                    if is_trailing:
-                        reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
-                        await self._close_trade("COMPLETED", current_price, reason)
-                    else:
-                        reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
-                        await self._close_trade("STOPPED", current_price, reason)
-                    return
-                elif direction == "SHORT" and current_price >= self.active_trade["stop_loss"]:
-                    orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
-                    is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] < orig_stop)
-                    if is_trailing:
-                        reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
-                        await self._close_trade("COMPLETED", current_price, reason)
-                    else:
-                        reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
-                        await self._close_trade("STOPPED", current_price, reason)
-                    return
+                # 2. Automated +1.0R Milestone Rule: Lock 40% Profit, 60% Runner Safe
+                if risk > 0 and not self.active_trade.get("partial_closed"):
+                    current_r = ((current_price - entry) / risk) if direction == "LONG" else ((entry - current_price) / risk)
+                    if current_r >= 1.0:
+                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=current_r)
+
+                # 3. Stop Loss Check (tested on pullbacks, not on the exact tick that ratcheted stop)
+                if not trail_res.stop_moved:
+                    if direction == "LONG" and current_price <= self.active_trade["stop_loss"]:
+                        orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
+                        is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] > orig_stop)
+                        if is_trailing:
+                            reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
+                            await self._close_trade("COMPLETED", current_price, reason)
+                        else:
+                            reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
+                            await self._close_trade("STOPPED", current_price, reason)
+                        return
+                    elif direction == "SHORT" and current_price >= self.active_trade["stop_loss"]:
+                        orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
+                        is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] < orig_stop)
+                        if is_trailing:
+                            reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
+                            await self._close_trade("COMPLETED", current_price, reason)
+                        else:
+                            reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
+                            await self._close_trade("STOPPED", current_price, reason)
+                        return
 
                 # 3. Target 2 Hit (Full Target)
                 if direction == "LONG" and current_price >= t2:
@@ -451,6 +458,8 @@ class TradeManager:
 
         actual_risk_inr = margin_used * leverage * pct_risk
         exact_pnl_inr = margin_used * leverage * pct_move
+        realized_partial = float(self.active_trade.get("realized_partial_pnl") or 0.0)
+        exact_pnl_inr += realized_partial
 
         # Dynamic Variable Realized PnL & R-Multiple Calculation
         if custom_r is not None:
@@ -589,20 +598,93 @@ class TradeManager:
             self._notify_state_change()
             return True, f"Stop Loss moved to Breakeven (${entry:,.2f}) for {coin}!"
 
-    async def close_partial(self, pct: float = 0.5) -> tuple[bool, str]:
-        """Manually closes a percentage (e.g. 50%) of the active position."""
-        async with self._lock:
-            if not self.active_trade:
-                return False, "No active trade to take partial profit on."
+    async def _execute_partial(
+        self,
+        pct: float = 0.40,
+        current_price: Optional[float] = None,
+        achieved_r: Optional[float] = None
+    ) -> tuple[bool, str]:
+        """
+        Internal partial execution method (called by automated +1.0R milestone or manual trigger).
+        Banks specified percentage (e.g. 40%) in realized profit, reduces margin to remaining runner (60%),
+        ensures Stop Loss is locked at Breakeven + fee buffer (+0.05R), and notifies via Telegram.
+        """
+        if not self.active_trade:
+            return False, "No active trade to take partial profit on."
+        if self.active_trade.get("partial_closed"):
+            return False, "Partial profit already secured on this trade."
 
-            coin = self.active_trade["coin"]
-            entry = self.active_trade["entry"]
-            current_p = self.active_trade.get("peak_favorable_price", entry)
-            self.active_trade["partial_closed"] = True
-            self.active_trade["margin_used"] = round(self.active_trade.get("margin_used", 3000.0) * (1.0 - pct), 2)
-            self.db.set_active_trade(self.active_trade)
-            self._notify_state_change()
-            return True, f"Secured {int(pct*100)}% partial profit on {coin} at ${current_p:,.2f}!"
+        coin = self.active_trade["coin"]
+        direction = self.active_trade["direction"]
+        entry = float(self.active_trade["entry"])
+        stop = float(self.active_trade["stop_loss"])
+        orig_stop = float(self.active_trade.get("original_stop", stop))
+        risk = abs(entry - orig_stop)
+        current_p = current_price if current_price is not None else float(self.active_trade.get("current_price") or self.active_trade.get("peak_favorable_price") or entry)
+
+        if achieved_r is None:
+            achieved_r = ((current_p - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_p) / risk) if risk > 0 else 1.0)
+        achieved_r = round(achieved_r, 2)
+
+        # 1. Update partial state
+        self.active_trade["partial_closed"] = True
+        self.active_trade["partial_pct"] = pct
+        self.active_trade["partial_price"] = current_p
+        self.active_trade["partial_r"] = achieved_r
+
+        orig_margin = float(self.active_trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
+        leverage = int(self.active_trade.get("leverage") or settings.DEFAULT_LEVERAGE)
+        closed_margin = orig_margin * pct
+        remaining_margin = round(orig_margin * (1.0 - pct), 2)
+        self.active_trade["margin_used"] = remaining_margin
+
+        pct_move = ((current_p - entry) / entry) if (direction == "LONG" and entry > 0) else (((entry - current_p) / entry) if entry > 0 else 0.0)
+        realized_pnl_inr = round(closed_margin * leverage * pct_move, 2)
+        self.active_trade["realized_partial_pnl"] = realized_pnl_inr
+
+        # 2. Ensure Stop Loss is moved to at least Breakeven + fee buffer (+0.05R)
+        fee_buf = 0.05 * risk if risk > 0 else 0.0
+        if direction == "LONG":
+            be_sl = round_price(coin, entry + fee_buf)
+            if self.active_trade["stop_loss"] < be_sl:
+                self.active_trade["stop_loss"] = be_sl
+                self.active_trade["be_moved"] = True
+        else:
+            be_sl = round_price(coin, entry - fee_buf)
+            if self.active_trade["stop_loss"] > be_sl:
+                self.active_trade["stop_loss"] = be_sl
+                self.active_trade["be_moved"] = True
+
+        self.db.set_active_trade(self.active_trade)
+        logger.info(
+            f"Partial Profit Executed for {coin}: {int(pct*100)}% secured at {format_price(coin, current_p)} "
+            f"(+{achieved_r:.2f}R | +₹{realized_pnl_inr:,.2f}). Remaining margin: ₹{remaining_margin:,.2f}"
+        )
+
+        remaining_pct = int((1.0 - pct) * 100)
+        secured_pct = int(pct * 100)
+        try:
+            await self.telegram.send_partial_profit_secured(
+                coin=coin,
+                direction=direction,
+                current_price=current_p,
+                secured_pct=secured_pct,
+                remaining_pct=remaining_pct,
+                realized_pnl_inr=realized_pnl_inr,
+                achieved_r=achieved_r,
+                new_stop=self.active_trade["stop_loss"]
+            )
+        except Exception as e:
+            logger.error(f"Failed to dispatch partial profit Telegram alert: {e}")
+
+        self._notify_state_change()
+        return True, f"Secured {secured_pct}% partial profit on {coin} at {format_price(coin, current_p)}!"
+
+    async def close_partial(self, pct: float = 0.40) -> tuple[bool, str]:
+        """Manually closes a percentage (e.g. 40% or 50%) of the active position."""
+        async with self._lock:
+            return await self._execute_partial(pct=pct)
+
 
     async def emergency_close(self, reason: str = "Manually Closed via Telegram Button") -> tuple[bool, str]:
         """Instantly closes the active trade and clears the global slot, calculating live PnL."""

@@ -10,9 +10,31 @@ from typing import Any, Optional
 # Add project root to sys.path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
+from pydantic import BaseModel
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException, Header, Depends, Body
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+
+class PinVerifyRequest(BaseModel):
+    pin: str
+
+
+def verify_admin_pin(
+    x_admin_pin: Optional[str] = Header(None, alias="X-Admin-PIN"),
+    pin: Optional[str] = Query(None, alias="pin")
+):
+    """
+    Ensures mutating and operational commands are authorized with the 4-digit Admin PIN.
+    Checks HTTP Header 'X-Admin-PIN' first, falling back to query param 'pin'.
+    """
+    provided = x_admin_pin or pin
+    expected = settings.ADMIN_PIN
+    if not provided or str(provided).strip() != str(expected).strip():
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Invalid or missing 4-digit Admin PIN. Please authenticate."
+        )
+    return True
 
 from config.settings import settings
 from market_data.feed_manager import FeedManager
@@ -748,7 +770,15 @@ async def get_symbol_reentry_status(symbol: str):
     return trade_manager.reentry_manager.get_market_status(sym)
 
 
-@app.post("/api/close_active_trade")
+@app.post("/api/verify_pin")
+async def api_verify_pin(req: PinVerifyRequest):
+    """Validates the 4-digit admin PIN."""
+    if req.pin and str(req.pin).strip() == str(settings.ADMIN_PIN).strip():
+        return {"status": "success", "authenticated": True, "message": "Admin PIN verified"}
+    raise HTTPException(status_code=401, detail="Unauthorized: Invalid Admin PIN")
+
+
+@app.post("/api/close_active_trade", dependencies=[Depends(verify_admin_pin)])
 async def api_close_active_trade():
     """Manually cancels and releases any active or waiting trade in the bot."""
     closed_coin = None
@@ -789,7 +819,7 @@ async def api_close_active_trade():
     return {"status": "all_cleared", "message": "All trades cancelled and cleared. Global slot is OPEN."}
 
 
-@app.post("/api/pause")
+@app.post("/api/pause", dependencies=[Depends(verify_admin_pin)])
 async def api_pause():
     """Pauses the bot and cancels any active or waiting trade."""
     closed_coin = None
@@ -828,7 +858,7 @@ async def api_pause():
     }
 
 
-@app.post("/api/resume")
+@app.post("/api/resume", dependencies=[Depends(verify_admin_pin)])
 async def api_resume():
     """Resumes the bot so it can enter new trades."""
     trade_manager.resume_trading()
@@ -849,7 +879,7 @@ async def api_resume():
     return {"status": "resumed", "message": "Spidy Bot RESUMED. 24/7 scanner active."}
 
 
-@app.post("/api/breakeven")
+@app.post("/api/breakeven", dependencies=[Depends(verify_admin_pin)])
 async def api_breakeven():
     """Moves stop loss of active trade to breakeven."""
     if not trade_manager or not trade_manager.active_trade:
@@ -859,7 +889,7 @@ async def api_breakeven():
     return {"status": "success" if success else "failed", "message": msg}
 
 
-@app.post("/api/partial")
+@app.post("/api/partial", dependencies=[Depends(verify_admin_pin)])
 async def api_partial():
     """Closes 50% partial on active trade."""
     if not trade_manager or not trade_manager.active_trade:
@@ -869,7 +899,7 @@ async def api_partial():
     return {"status": "success" if success else "failed", "message": msg}
 
 
-@app.post("/api/reset")
+@app.post("/api/reset", dependencies=[Depends(verify_admin_pin)])
 async def api_reset():
     """Wipes all setups, active trade, alerts, and cooldowns for a fresh start."""
     db.reset_all_data()
@@ -879,7 +909,23 @@ async def api_reset():
     return {"status": "success", "message": "SPIDY CRYPTO system reset complete. All trade history and cooldowns cleared."}
 
 
-@app.post("/api/simulate_setup")
+@app.get("/api/monte-carlo")
+async def api_monte_carlo(simulations: int = 500, trades: int = 100):
+    """Executes Monte Carlo quantitative simulation on strategy performance."""
+    from backtesting.monte_carlo import MonteCarloEngine
+    result = MonteCarloEngine.run_simulation(
+        initial_capital=float(settings.MAX_ALLOWED_MARGIN or 3000.0),
+        win_rate=0.65,
+        avg_win_r=1.8,
+        avg_loss_r=1.0,
+        risk_per_trade_pct=settings.MAX_RISK_PCT,
+        num_trades=trades,
+        num_simulations=simulations
+    )
+    return result
+
+
+@app.post("/api/simulate_setup", dependencies=[Depends(verify_admin_pin)])
 async def api_simulate_setup(
     symbol: str = Query("ETHUSD"),
     direction: str = Query("LONG"),

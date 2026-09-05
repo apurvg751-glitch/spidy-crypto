@@ -100,6 +100,41 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // PIN Security Pill click listener
+    const secPill = document.getElementById("security-pill");
+    if (secPill) {
+        secPill.addEventListener("click", () => {
+            const stored = getStoredPin();
+            if (stored) {
+                if (confirm("Admin controls are currently UNLOCKED. Do you want to lock them now?")) {
+                    setStoredPin("");
+                }
+            } else {
+                openPinModal(() => {
+                    alert("Admin unlocked successfully.");
+                });
+            }
+        });
+    }
+
+    // PIN modal buttons & Enter key
+    const btnPinSubmit = document.getElementById("btn-pin-submit");
+    if (btnPinSubmit) btnPinSubmit.addEventListener("click", submitPinAuth);
+
+    const btnPinCancel = document.getElementById("btn-pin-cancel");
+    if (btnPinCancel) btnPinCancel.addEventListener("click", closePinModal);
+
+    const pinInput = document.getElementById("pin-input");
+    if (pinInput) {
+        pinInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") submitPinAuth();
+            if (e.key === "Escape") closePinModal();
+        });
+    }
+
+    // Initialize security badge from session
+    updateSecurityBadge(!!getStoredPin());
+
     // Unconditional high-frequency status polling to ensure web HUD is always 100% in sync with Telegram
     setInterval(() => {
         fetchStatus();
@@ -812,19 +847,131 @@ async function triggerScan() {
     }
 }
 
+// ==========================================
+// 4-DIGIT ADMIN PIN SECURITY SYSTEM (PIN: 1408)
+// ==========================================
+let pendingPinAction = null;
+
+function getStoredPin() {
+    return sessionStorage.getItem("spidy_admin_pin") || "";
+}
+
+function setStoredPin(pin) {
+    if (pin) {
+        sessionStorage.setItem("spidy_admin_pin", pin);
+        updateSecurityBadge(true);
+    } else {
+        sessionStorage.removeItem("spidy_admin_pin");
+        updateSecurityBadge(false);
+    }
+}
+
+function updateSecurityBadge(unlocked) {
+    const icon = document.getElementById("security-lock-icon");
+    const txt = document.getElementById("security-status-text");
+    if (icon && txt) {
+        if (unlocked) {
+            icon.textContent = "🔓";
+            txt.textContent = "ADMIN UNLOCKED";
+            txt.style.color = "var(--emerald-neon)";
+        } else {
+            icon.textContent = "🔒";
+            txt.textContent = "PIN LOCKED";
+            txt.style.color = "var(--amber-neon)";
+        }
+    }
+}
+
+async function verifyPinWithServer(pin) {
+    try {
+        const res = await fetch("/api/verify_pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: pin })
+        });
+        return res.ok;
+    } catch (e) {
+        console.error("PIN verification error", e);
+        return false;
+    }
+}
+
+function openPinModal(onSuccess) {
+    pendingPinAction = onSuccess;
+    const modal = document.getElementById("pin-modal");
+    const input = document.getElementById("pin-input");
+    const errMsg = document.getElementById("pin-error-msg");
+    if (modal && input) {
+        modal.style.display = "flex";
+        input.value = "";
+        if (errMsg) errMsg.textContent = "";
+        setTimeout(() => input.focus(), 50);
+    }
+}
+
+function closePinModal() {
+    const modal = document.getElementById("pin-modal");
+    if (modal) modal.style.display = "none";
+    pendingPinAction = null;
+}
+
+async function submitPinAuth() {
+    const input = document.getElementById("pin-input");
+    const errMsg = document.getElementById("pin-error-msg");
+    const pin = (input ? input.value : "").trim();
+    if (!pin) {
+        if (errMsg) errMsg.textContent = "Please enter 4-digit PIN";
+        return;
+    }
+
+    const isValid = await verifyPinWithServer(pin);
+    if (isValid) {
+        setStoredPin(pin);
+        const action = pendingPinAction;
+        closePinModal();
+        if (action) action(pin);
+    } else {
+        if (errMsg) errMsg.textContent = "❌ Invalid PIN. Access Denied.";
+        if (input) {
+            input.value = "";
+            input.focus();
+        }
+    }
+}
+
+function requireAdminPin(action) {
+    const stored = getStoredPin();
+    if (stored) {
+        action(stored);
+    } else {
+        openPinModal(action);
+    }
+}
+
 async function releaseActiveTradeLock() {
     if (!confirm("Are you sure you want to command SPIDY to stop and close the active trade?")) {
         return;
     }
-    try {
-        const res = await fetch("/api/close_active_trade", { method: "POST" });
-        const data = await res.json();
-        fetchStatus();
-        fetchCoinAnalysis(currentSymbol);
-        alert(data.message || "Active trade lock released.");
-    } catch (e) {
-        console.error("Release lock error", e);
-    }
+    requireAdminPin(async (pin) => {
+        try {
+            const res = await fetch("/api/close_active_trade", {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => releaseActiveTradeLock());
+                return;
+            }
+            const data = await res.json();
+            fetchStatus();
+            fetchCoinAnalysis(currentSymbol);
+            alert(data.message || "Active trade lock released.");
+        } catch (e) {
+            console.error("Release lock error", e);
+        }
+    });
 }
 
 let lastBacktestByMarket = null;
@@ -911,16 +1058,27 @@ async function runValidation() {
 }
 
 async function simulateSetup(dir) {
-    try {
-        const modelEl = document.getElementById("select-test-model");
-        const modelId = modelEl ? modelEl.value : "MODEL_7";
-        const res = await fetch(`/api/simulate_setup?symbol=${currentSymbol}&direction=${dir}&model_id=${modelId}&force=true`, { method: "POST" });
-        await res.json();
-        fetchStatus();
-        fetchCoinAnalysis(currentSymbol);
-    } catch (e) {
-        console.error("Simulation error", e);
-    }
+    requireAdminPin(async (pin) => {
+        try {
+            const modelEl = document.getElementById("select-test-model");
+            const modelId = modelEl ? modelEl.value : "MODEL_7";
+            const res = await fetch(`/api/simulate_setup?symbol=${currentSymbol}&direction=${dir}&model_id=${modelId}&force=true`, {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => simulateSetup(dir));
+                return;
+            }
+            await res.json();
+            fetchStatus();
+            fetchCoinAnalysis(currentSymbol);
+        } catch (e) {
+            console.error("Simulation error", e);
+        }
+    });
 }
 
 function renderActiveTradeWarRoom(at) {
@@ -1092,41 +1250,74 @@ function renderActiveTradeWarRoom(at) {
 }
 
 async function triggerBreakeven() {
-    try {
-        const res = await fetch("/api/breakeven", { method: "POST" });
-        const data = await res.json();
-        alert(data.message || "Breakeven applied.");
-        fetchStatus();
-    } catch (e) {
-        console.error("Breakeven error", e);
-    }
+    requireAdminPin(async (pin) => {
+        try {
+            const res = await fetch("/api/breakeven", {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => triggerBreakeven());
+                return;
+            }
+            const data = await res.json();
+            alert(data.message || "Breakeven applied.");
+            fetchStatus();
+        } catch (e) {
+            console.error("Breakeven error", e);
+        }
+    });
 }
 
 async function triggerPartial() {
-    try {
-        const res = await fetch("/api/partial", { method: "POST" });
-        const data = await res.json();
-        alert(data.message || "Partial profit secured.");
-        fetchStatus();
-    } catch (e) {
-        console.error("Partial error", e);
-    }
+    requireAdminPin(async (pin) => {
+        try {
+            const res = await fetch("/api/partial", {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => triggerPartial());
+                return;
+            }
+            const data = await res.json();
+            alert(data.message || "Partial profit secured.");
+            fetchStatus();
+        } catch (e) {
+            console.error("Partial error", e);
+        }
+    });
 }
 
 async function toggleBotPower() {
     const powerBtn = document.getElementById("btn-power-toggle");
     const isPaused = powerBtn && powerBtn.textContent.includes("Resume");
     const endpoint = isPaused ? "/api/resume" : "/api/pause";
-    try {
-        if (powerBtn) powerBtn.disabled = true;
-        const res = await fetch(endpoint, { method: "POST" });
-        const data = await res.json();
-        alert(data.message || "State updated.");
-        await fetchStatus();
-    } catch (e) {
-        console.error("Power toggle error", e);
-    } finally {
-        if (powerBtn) powerBtn.disabled = false;
-    }
+    requireAdminPin(async (pin) => {
+        try {
+            if (powerBtn) powerBtn.disabled = true;
+            const res = await fetch(endpoint, {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => toggleBotPower());
+                return;
+            }
+            const data = await res.json();
+            alert(data.message || "State updated.");
+            await fetchStatus();
+        } catch (e) {
+            console.error("Power toggle error", e);
+        } finally {
+            if (powerBtn) powerBtn.disabled = false;
+        }
+    });
 }
 

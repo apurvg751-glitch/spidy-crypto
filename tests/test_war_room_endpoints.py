@@ -14,17 +14,18 @@ def test_war_room_endpoints():
     assert "global_status" in data
     assert "active_trade" in data
 
-    # 2. Breakeven returns 400 when no trade is active
+    # 2. Breakeven returns 400 when authorized but no trade is active
     trade_manager.active_trade = None
-    res_be = client.post("/api/breakeven")
+    headers = {"X-Admin-PIN": "1408"}
+    res_be = client.post("/api/breakeven", headers=headers)
     assert res_be.status_code == 400
 
-    # 3. Partial returns 400 when no trade is active
-    res_part = client.post("/api/partial")
+    # 3. Partial returns 400 when authorized but no trade is active
+    res_part = client.post("/api/partial", headers=headers)
     assert res_part.status_code == 400
 
-    # 4. Close active trade returns 200 and clears slot
-    res_close = client.post("/api/close_active_trade")
+    # 4. Close active trade returns 200 and clears slot when authorized
+    res_close = client.post("/api/close_active_trade", headers=headers)
     assert res_close.status_code == 200
     assert res_close.json()["status"] in ("all_cleared", "trade_closed")
     assert trade_manager.active_trade is None

@@ -81,9 +81,10 @@ class Settings(BaseModel):
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or base64.b64decode("ODE4MTM4NzY3NjpBQUhWem9QZDBOSnZFUy04RzJZVktiVWRJZWNJNl9hbkwwNA==").decode("utf-8")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID") or "7945582714"
 
-    # Server / UI
+    # Server / UI & Security
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
     SERVER_PORT: int = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8800")))
+    ADMIN_PIN: str = os.getenv("SPIDY_ADMIN_PIN", "1408")
 
 
 settings = Settings()

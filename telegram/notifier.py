@@ -181,4 +181,32 @@ class TelegramNotifier:
         self.db.record_alert_sent(alert_id, coin, status)
         return success
 
+    async def send_partial_profit_secured(
+        self,
+        coin: str,
+        direction: str,
+        current_price: float,
+        secured_pct: int = 40,
+        remaining_pct: int = 60,
+        realized_pnl_inr: float = 0.0,
+        achieved_r: float = 1.0,
+        new_stop: Optional[float] = None
+    ) -> bool:
+        """Dispatches automated partial profit secured notification (+1.0R milestone)."""
+        stop_str = f"${new_stop:,.4f}" if new_stop is not None else "Breakeven"
+        pnl_str = f"+₹{realized_pnl_inr:,.2f}" if realized_pnl_inr >= 0 else f"-₹{abs(realized_pnl_inr):,.2f}"
+
+        msg = (
+            f"💰 *SPIDY CRYPTO — +1.0R MILESTONE: {secured_pct}% PROFIT SECURED!* 🔒\n\n"
+            f"• *Market*: `{coin}` ({direction})\n"
+            f"• *Execution Price*: `${current_price:,.4f}`\n"
+            f"• *Milestone*: `+{achieved_r:.2f}R` reached\n"
+            f"• *Profit Banked*: `{secured_pct}%` of position locked in ({pnl_str})\n"
+            f"• *Remaining Runner*: `{remaining_pct}%` position active\n"
+            f"• *Protective Shield*: Stop Loss moved to `{stop_str}` (Risk-Free)\n\n"
+            f"⚡ _The remaining {remaining_pct}% is running risk-free toward Target 2 / higher targets._"
+        )
+        buttons = get_trade_inline_keyboard()
+        return await self.send_message(msg, reply_markup=buttons)
+
 
