@@ -264,6 +264,11 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
+@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/hud", response_class=HTMLResponse)
+@app.get("/app", response_class=HTMLResponse)
+@app.get("/admin", response_class=HTMLResponse)
 async def serve_index():
     index_path = Path(__file__).resolve().parent / "ui" / "templates" / "index.html"
     return HTMLResponse(
@@ -277,6 +282,7 @@ async def serve_index():
 
 
 @app.get("/api/status")
+@app.get("/status")
 async def api_status():
     return get_system_status()
 

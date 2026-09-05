@@ -14,10 +14,17 @@ def test_public_read_endpoints_remain_accessible(client):
     """Verifies that monitoring and telemetry endpoints remain open for HUD viewing without PIN."""
     endpoints = [
         "/api/status",
+        "/status",
         "/api/performance",
         "/api/model_stats",
         "/api/history",
         "/api/monte-carlo?simulations=10&trades=10",
+        "/",
+        "/index.html",
+        "/dashboard",
+        "/hud",
+        "/app",
+        "/admin",
     ]
     for ep in endpoints:
         res = client.get(ep)
