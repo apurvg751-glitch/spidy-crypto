@@ -39,6 +39,7 @@ class TradeManager:
         self.reentry_manager = ReentryManager(db=self.db)
 
         self._lock = asyncio.Lock()
+        self.feed_manager: Optional[Any] = None
         self.active_trade: Optional[dict[str, Any]] = None
         self.global_status: str = "WATCHING"
         self.is_paused: bool = False
@@ -147,6 +148,63 @@ class TradeManager:
                     trade_status="BLOCKED BY ACTIVE TRADE"
                 )
                 logger.info(f"Setup {loser.coin} rejected: {rejection_reason}")
+
+            # 2a. Bitcoin Mother-Ship Directional Lock
+            if getattr(self, "feed_manager", None):
+                btc_state = self.feed_manager.get_market_state("BTCUSD")
+                btc_candles = btc_state.candles_15m if btc_state else []
+                from strategy.btc_anchor import BtcAnchorEngine
+                btc_res = BtcAnchorEngine.evaluate_btc_alignment(winner.coin, winner.direction, btc_candles)
+                if not btc_res.is_allowed:
+                    logger.warning(f"Winning setup {winner.coin} blocked by BTC Mother-Ship: {btc_res.rejection_reason}")
+                    winner_dict = winner.model_dump()
+                    self.db.save_setup(
+                        setup_dict=winner_dict,
+                        is_selected=False,
+                        is_rejected=True,
+                        rejection_reason=btc_res.rejection_reason,
+                        trade_status="BLOCKED_BY_BTC_ANCHOR"
+                    )
+                    return None
+
+            # 2b. Fake Breakout vs. Real Breakout Gate (Bull/Bear Trap Filter)
+            if getattr(winner, "model_id", "") in ("MODEL_2", "MODEL_5", "MODEL_10"):
+                if getattr(self, "feed_manager", None):
+                    m_state = self.feed_manager.get_market_state(winner.coin)
+                    c5 = m_state.candles_5m if m_state else []
+                    if c5:
+                        from structure.breakout_validator import BreakoutValidator
+                        bo_res = BreakoutValidator.validate_breakout(
+                            candles=c5,
+                            breakout_level=winner.entry,
+                            direction=winner.direction,
+                            atr=getattr(winner, "atr", winner.entry * 0.005)
+                        )
+                        if bo_res.is_fake_breakout:
+                            rejection_msg = f"BLOCKED BY BREAKOUT VALIDATOR: Fake breakout trap detected ({bo_res.trap_type})."
+                            logger.warning(f"Setup {winner.coin} blocked: {rejection_msg}")
+                            winner_dict = winner.model_dump()
+                            self.db.save_setup(
+                                setup_dict=winner_dict,
+                                is_selected=False,
+                                is_rejected=True,
+                                rejection_reason=rejection_msg,
+                                trade_status="BLOCKED_BY_FAKE_BREAKOUT"
+                            )
+                            return None
+
+            # 2c. 50% FVG Discount Limit Retest Entry Snapper
+            from strategy.retest_snapper import RetestSnapper
+            retest_res = RetestSnapper.calculate_optimal_entry(
+                symbol=winner.coin,
+                direction=winner.direction,
+                current_close=winner.entry,
+                atr=getattr(winner, "atr", winner.entry * 0.005)
+            )
+            if retest_res.discount_pips > 0:
+                old_entry = winner.entry
+                winner.entry = retest_res.optimal_entry
+                winner.reasons.append(f"Retest Snapper: Discount entry at {winner.entry} ({retest_res.entry_type}, saved {retest_res.discount_pips})")
 
             # 3. Position Sizing & Portfolio Risk Check
             pos_calc = PositionSizer.calculate_position(
@@ -347,6 +405,34 @@ class TradeManager:
                     current_r = ((current_price - entry) / risk) if direction == "LONG" else ((entry - current_price) / risk)
                     if current_r >= 1.0:
                         await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=current_r)
+
+                # 2b. Institutional Velocity & Stagnation Stop Engine (60m Breakeven / 90m Scratch)
+                now_ts = int(time.time())
+                act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
+                elapsed_seconds = now_ts - act_ts
+                current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
+
+                # If trade held > 60 mins without hitting +0.5R, ratchet Stop Loss to Breakeven
+                if elapsed_seconds >= 3600 and current_r < 0.50 and not self.active_trade.get("be_moved"):
+                    fee_buf = 0.02 * risk if risk > 0 else 0.0
+                    be_level = round_price(symbol, entry + fee_buf if direction == "LONG" else entry - fee_buf)
+                    if (direction == "LONG" and self.active_trade["stop_loss"] < be_level) or (direction == "SHORT" and self.active_trade["stop_loss"] > be_level):
+                        old_sl = self.active_trade["stop_loss"]
+                        self.active_trade["stop_loss"] = be_level
+                        self.active_trade["be_moved"] = True
+                        self.db.set_active_trade(self.active_trade)
+                        logger.info(f"60-Min Stagnation Guard applied for {symbol}: {old_sl} -> {be_level}")
+                        await self.telegram.send_trade_lifecycle_update(
+                            symbol, direction, "STAGNATION_BE", current_price, setup_id,
+                            details=f"60-Min Velocity Guard: Sideways consolidation detected. Stop Loss locked at Breakeven ({format_price(symbol, be_level)})."
+                        )
+                        self._notify_state_change()
+
+                # If trade held > 90 mins and still stagnant within +/- 0.25R, scratch at market
+                if elapsed_seconds >= 5400 and (-0.25 <= current_r <= 0.25):
+                    logger.info(f"90-Min Stagnation Scratch Exit for {symbol} at {current_price} ({current_r:.2f}R)")
+                    await self._close_trade("COMPLETED" if current_r >= 0 else "STOPPED", current_price, f"90-Min Stagnation Scratch Exit ({current_r:.2f}R)")
+                    return
 
                 # 3. Stop Loss Check (tested on pullbacks, not on the exact tick that ratcheted stop)
                 if not trail_res.stop_moved:

@@ -106,7 +106,9 @@ class ConfirmationsResult(BaseModel):
     ema_ok: bool = False
     candle_ok: bool = False
     passed_count: int = 0
-    is_qualified: bool = False           # >= 4/7
+    is_qualified: bool = False           # >= 4/7 and hard gates pass
+    hard_gates_passed: bool = True
+    hard_gate_failures: list[str] = Field(default_factory=list)
     rating: str = "UNQUALIFIED"          # QUALIFIED (4), STRONG (5), VERY STRONG (6), EXCEPTIONAL (7)
     details: dict[str, str] = Field(default_factory=dict)
 

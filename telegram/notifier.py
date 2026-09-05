@@ -133,7 +133,23 @@ class TelegramNotifier:
 
         message = format_main_alert(setup_dict)
         buttons = get_trade_inline_keyboard()
-        success = await self.send_message(message, reply_markup=buttons)
+
+        # Generate and deliver HD Candlestick Chart
+        try:
+            from telegram.chart_generator import generate_trade_chart
+            chart_bytes = generate_trade_chart(
+                symbol=coin,
+                direction=setup_dict.get("direction", "LONG"),
+                entry=float(setup_dict.get("entry", 0.0)),
+                stop_loss=float(setup_dict.get("stop_loss", 0.0)),
+                target_1=float(setup_dict.get("target_1", 0.0)),
+                target_2=float(setup_dict.get("target_2", 0.0)),
+                candles=setup_dict.get("candles")
+            )
+            success = await self.send_photo(photo_bytes=chart_bytes, caption=message, reply_markup=buttons)
+        except Exception as e:
+            logger.warning(f"Chart generation error, delivering text alert: {e}")
+            success = await self.send_message(message, reply_markup=buttons)
 
         # Mark sent in DB whether delivered or simulated so it never spams
         self.db.record_alert_sent(alert_id, coin, "MAIN_ALERT")

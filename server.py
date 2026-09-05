@@ -230,6 +230,7 @@ async def lifespan(app: FastAPI):
         on_tick=on_tick
     )
     await feed_manager.start()
+    trade_manager.feed_manager = feed_manager
 
     scan_task = asyncio.create_task(background_scanner_loop())
     keepalive_task = asyncio.create_task(render_keepalive_loop())

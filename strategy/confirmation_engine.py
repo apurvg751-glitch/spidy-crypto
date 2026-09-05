@@ -113,6 +113,21 @@ class ConfirmationEngine:
         else:
             rating = "UNQUALIFIED"
 
+        # 3 Mandatory Hard Gates:
+        # Gate 1: Trend Alignment (trend_ok)
+        # Gate 2: Institutional Volume or Candle Displacement (vol_ok or candle_ok)
+        # Gate 3: Structural Imbalance / S/R (ob_ok or fvg_ok or ema_ok)
+        hard_failures = []
+        if not trend_ok:
+            hard_failures.append("Hard Gate 1 Failed: Macro MTF Trend is misaligned")
+        if not vol_ok and not candle_ok:
+            hard_failures.append("Hard Gate 2 Failed: Neither volume surge nor candle displacement confirmed")
+        if not ob_ok and not fvg_ok and not ema_ok:
+            hard_failures.append("Hard Gate 3 Failed: Missing structural OB, FVG, or EMA confluence")
+
+        hard_gates_passed = (len(hard_failures) == 0)
+        is_qualified = (passed >= 4) and hard_gates_passed
+
         return ConfirmationsResult(
             trend_ok=trend_ok,
             ob_ok=ob_ok,
@@ -122,7 +137,9 @@ class ConfirmationEngine:
             ema_ok=ema_ok,
             candle_ok=candle_ok,
             passed_count=passed,
-            is_qualified=(passed >= 4),
-            rating=rating,
+            is_qualified=is_qualified,
+            hard_gates_passed=hard_gates_passed,
+            hard_gate_failures=hard_failures,
+            rating=rating if is_qualified else "UNQUALIFIED",
             details=details
         )
