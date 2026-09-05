@@ -121,6 +121,19 @@ async def broadcast_full_status():
     })
 
 
+def handle_trade_state_change(trade_summary: dict[str, Any]):
+    """Instantly broadcasts full system state to all connected WebSocket clients on any trade transition."""
+    try:
+        loop = asyncio.get_running_loop()
+        if loop.is_running():
+            loop.create_task(broadcast_full_status())
+    except RuntimeError:
+        pass
+
+
+trade_manager.on_state_change = handle_trade_state_change
+
+
 def get_system_status() -> dict[str, Any]:
     states = {}
     if feed_manager:
@@ -227,7 +240,14 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     index_path = Path(__file__).resolve().parent / "ui" / "templates" / "index.html"
-    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        content=index_path.read_text(encoding="utf-8"),
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
 
 
 @app.get("/api/status")

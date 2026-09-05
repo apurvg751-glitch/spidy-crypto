@@ -21,6 +21,7 @@ function formatPrice(sym, val) {
 }
 
 let userManuallySelectedSymbol = false;
+let lastActiveTradeId = null;
 
 document.addEventListener("DOMContentLoaded", () => {
     initWebSocket();
@@ -83,17 +84,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const btnWtView = document.getElementById("btn-wt-view");
     if (btnWtView) btnWtView.addEventListener("click", () => {
         if (activeTrade && activeTrade.coin) {
-            userManuallySelectedSymbol = true;
+            userManuallySelectedSymbol = false;
             selectSymbol(activeTrade.coin);
         }
     });
 
-    // Polling fallback to ensure connection is always resilient
-    setInterval(() => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
-            fetchStatus();
+    const btnSnapActive = document.getElementById("btn-snap-active");
+    if (btnSnapActive) btnSnapActive.addEventListener("click", () => {
+        if (activeTrade && activeTrade.coin) {
+            userManuallySelectedSymbol = false;
+            selectSymbol(activeTrade.coin);
         }
-    }, 3000);
+    });
+
+    // Unconditional high-frequency status polling to ensure web HUD is always 100% in sync with Telegram
+    setInterval(() => {
+        fetchStatus();
+    }, 2500);
 });
 
 function selectSymbol(sym) {
@@ -143,6 +150,25 @@ function selectSymbol(sym) {
     // 4. Fetch candles and full deep SMC server analysis
     loadCandles(sym, currentResolution);
     fetchCoinAnalysis(sym);
+
+    // 5. Contextual banner if previewing another coin while active trade is running
+    const activeNotice = document.getElementById("tactical-active-notice");
+    if (activeNotice) {
+        if (activeTrade && (activeTrade.trade_status === "ACTIVE" || activeTrade.trade_status === "WAITING") && sym !== activeTrade.coin) {
+            activeNotice.style.display = "flex";
+            const cEl = document.getElementById("tactical-notice-coin");
+            const dEl = document.getElementById("tactical-notice-dir");
+            const vEl = document.getElementById("tactical-notice-viewing");
+            if (cEl) cEl.textContent = activeTrade.coin;
+            if (dEl) {
+                dEl.textContent = `(${activeTrade.direction})`;
+                dEl.style.color = activeTrade.direction === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
+            }
+            if (vEl) vEl.textContent = sym;
+        } else {
+            activeNotice.style.display = "none";
+        }
+    }
 
     // 5. If backtest was executed, refresh highlight for selected coin
     if (lastBacktestByMarket && lastBacktestByMarket[sym]) {
@@ -368,7 +394,7 @@ function updatePrice(symbol, price, isStale, connStatus) {
             statusEl.textContent = `🚨 IN TRADE (${activeTrade.direction})`;
             statusEl.style.color = activeTrade.direction === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
         } else {
-            statusEl.textContent = connStatus || "SCANNING";
+            statusEl.textContent = "SCANNING";
             statusEl.style.color = "var(--emerald-neon)";
         }
     }
@@ -848,11 +874,13 @@ function renderActiveTradeWarRoom(at) {
     if (!at || (at.trade_status !== "ACTIVE" && at.trade_status !== "WAITING")) {
         banner.style.display = "none";
         standby.style.display = "flex";
+        const activeNotice = document.getElementById("tactical-active-notice");
+        if (activeNotice) activeNotice.style.display = "none";
         document.querySelectorAll(".market-card").forEach(c => {
             c.classList.remove("in-trade");
             const sym = c.dataset.symbol;
             const stEl = document.getElementById(`status-${sym}`);
-            if (stEl && stEl.textContent.includes("IN TRADE")) {
+            if (stEl) {
                 stEl.textContent = "SCANNING";
                 stEl.style.color = "var(--emerald-neon)";
             }
@@ -931,7 +959,7 @@ function renderActiveTradeWarRoom(at) {
         rEl.style.color = pnlColor;
     }
 
-    // Highlight card in market strip
+    // Highlight card in market strip: ONLY the active coin gets in-trade badge!
     document.querySelectorAll(".market-card").forEach(c => {
         const cardSym = c.dataset.symbol;
         const stEl = document.getElementById(`status-${cardSym}`);
@@ -943,16 +971,39 @@ function renderActiveTradeWarRoom(at) {
             }
         } else {
             c.classList.remove("in-trade");
-            if (stEl && stEl.textContent.includes("IN TRADE")) {
+            if (stEl) {
                 stEl.textContent = "SCANNING";
                 stEl.style.color = "var(--emerald-neon)";
             }
         }
     });
 
-    // Auto-focus on active trade coin if user hasn't explicitly navigated away
-    if (!userManuallySelectedSymbol && currentSymbol !== sym) {
+    // Auto-focus on active trade coin if a new trade was opened
+    if (at.setup_id && at.setup_id !== lastActiveTradeId) {
+        lastActiveTradeId = at.setup_id;
+        userManuallySelectedSymbol = false;
         selectSymbol(sym);
+    } else if (!userManuallySelectedSymbol && currentSymbol !== sym) {
+        selectSymbol(sym);
+    }
+
+    // Update contextual banner if previewing another coin
+    const activeNotice = document.getElementById("tactical-active-notice");
+    if (activeNotice) {
+        if (currentSymbol !== sym) {
+            activeNotice.style.display = "flex";
+            const cEl = document.getElementById("tactical-notice-coin");
+            const dEl = document.getElementById("tactical-notice-dir");
+            const vEl = document.getElementById("tactical-notice-viewing");
+            if (cEl) cEl.textContent = sym;
+            if (dEl) {
+                dEl.textContent = `(${dir})`;
+                dEl.style.color = dir === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
+            }
+            if (vEl) vEl.textContent = currentSymbol;
+        } else {
+            activeNotice.style.display = "none";
+        }
     }
 }
 
