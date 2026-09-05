@@ -168,6 +168,14 @@ class TradeManager:
                 trade_status=initial_status
             )
 
+            from market_data.delta_specs import DeltaPointValueEngine
+            pv = DeltaPointValueEngine.calculate_point_value(
+                symbol=winner.coin,
+                price=winner.entry,
+                margin_used=pos_calc.required_margin,
+                leverage=pos_calc.leverage
+            )
+
             active_record = {
                 "setup_id": winner.id,
                 "coin": winner.coin,
@@ -191,6 +199,15 @@ class TradeManager:
                 "leverage": pos_calc.leverage,
                 "peak_favorable_price": winner.entry,
                 "peak_adverse_price": winner.entry,
+                "point_val_inr": pv.point_value_inr,
+                "point_val_usd": pv.point_value_usd,
+                "delta_contracts": pv.delta_contracts,
+                "contract_unit": pv.contract_unit,
+                "point_label": pv.point_label,
+                "points_moved": 0.0,
+                "pnl_inr": 0.0,
+                "pnl_usd": 0.0,
+                "pnl_pct": 0.0,
                 "be_moved": False,
                 "t1_hit": False,
                 "partial_closed": False,
@@ -207,7 +224,12 @@ class TradeManager:
             self.global_status = "ACTIVE"
             logger.info(f"Selected and activated new trade: {winner.coin} {winner.direction} [{active_record['model_name']}] (Score: {winner.setup_score}, Margin: ₹{pos_calc.required_margin})")
 
-            # Dispatch primary Telegram Alert
+            # Dispatch primary Telegram Alert (enriched with Delta specs)
+            winner_dict["point_val_inr"] = pv.point_value_inr
+            winner_dict["point_val_usd"] = pv.point_value_usd
+            winner_dict["delta_contracts"] = pv.delta_contracts
+            winner_dict["contract_unit"] = pv.contract_unit
+            winner_dict["point_label"] = pv.point_label
             await self.telegram.send_trade_detected_alert(winner_dict)
 
             self._notify_state_change()
@@ -228,6 +250,26 @@ class TradeManager:
             setup_id = self.active_trade["setup_id"]
 
             self.active_trade["current_price"] = current_price
+
+            # Precise Delta Exchange Point Value & Live PnL Tracking
+            from market_data.delta_specs import DeltaPointValueEngine
+            pnl_calc = DeltaPointValueEngine.calculate_exact_pnl(
+                symbol=symbol,
+                direction=direction,
+                entry=entry,
+                current_price=current_price,
+                margin_used=self.active_trade.get("margin_used"),
+                leverage=self.active_trade.get("leverage")
+            )
+            self.active_trade["points_moved"] = pnl_calc["points_moved"]
+            self.active_trade["point_val_inr"] = pnl_calc["point_val_inr"]
+            self.active_trade["point_val_usd"] = pnl_calc["point_val_usd"]
+            self.active_trade["delta_contracts"] = pnl_calc["delta_contracts"]
+            self.active_trade["contract_unit"] = pnl_calc["contract_unit"]
+            self.active_trade["point_label"] = pnl_calc["point_label"]
+            self.active_trade["pnl_inr"] = pnl_calc["pnl_inr"]
+            self.active_trade["pnl_usd"] = pnl_calc["pnl_usd"]
+            self.active_trade["pnl_pct"] = pnl_calc["pnl_pct"]
 
             # Track peak favorable and adverse excursion
             if direction == "LONG":

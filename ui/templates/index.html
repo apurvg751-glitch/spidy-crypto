@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SPIDY CRYPTO — Autonomous Trading Assistant</title>
-    <link rel="stylesheet" href="/static/style.css?v=3.7.1">
+    <link rel="stylesheet" href="/static/style.css?v=3.8.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -53,6 +53,9 @@
                 <div class="matrix-item"><span class="matrix-lbl">STOP LOSS</span><span id="wt-stop" class="matrix-val rose">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">TARGET 1</span><span id="wt-t1" class="matrix-val emerald">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">TARGET 2</span><span id="wt-t2" class="matrix-val cyan">--</span></div>
+                <div class="matrix-item"><span class="matrix-lbl">POINT VALUE</span><span id="wt-point-val" class="matrix-val cyan">--</span></div>
+                <div class="matrix-item"><span class="matrix-lbl">DELTA LOTS</span><span id="wt-delta-contracts" class="matrix-val amber">--</span></div>
+                <div class="matrix-item"><span class="matrix-lbl">POINTS MOVED</span><span id="wt-points-moved" class="matrix-val emerald">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">MARGIN ALLOCATED</span><span id="wt-margin" class="matrix-val amber">₹3,000 (6x)</span></div>
             </div>
         </div>
@@ -266,6 +269,10 @@
                         <span class="level-value" id="val-t2" style="color:var(--cyan-neon);">---</span>
                     </div>
                     <div class="level-box">
+                        <span class="level-label">Delta Point Value</span>
+                        <span class="level-value" id="val-point-value" style="color:var(--cyan-neon);">---</span>
+                    </div>
+                    <div class="level-box">
                         <span class="level-label">Margin / Position</span>
                         <span class="level-value" id="val-margin" style="color:var(--amber-neon);">Idle (₹3,000 Margin @ 6x)</span>
                     </div>
@@ -409,6 +416,6 @@
     <div>Zero Auto Execution • 6 Models • Multi-Timeframe • Telegram Connected</div>
 </footer>
 
-<script src="/static/app.js?v=3.7.1"></script>
+<script src="/static/app.js?v=3.8.0"></script>
 </body>
 </html>

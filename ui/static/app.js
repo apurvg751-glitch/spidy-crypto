@@ -493,6 +493,19 @@ function renderTacticalPanel(data) {
         document.getElementById("val-margin").textContent = "Idle (₹3,000 Margin @ 6x)";
     }
 
+    // Delta Exchange India Point Value Telemetry
+    const ptValEl = document.getElementById("val-point-value");
+    if (ptValEl) {
+        if (data.delta_telemetry) {
+            const dt = data.delta_telemetry;
+            const inrVal = Number(dt.point_value_inr || dt.inr_per_point || 0);
+            ptValEl.textContent = `${dt.point_label} = ±₹${inrVal.toFixed(2)}`;
+            ptValEl.title = `Delta Spec: ${dt.delta_contracts} ${dt.contract_unit} | Notional: ₹${Math.round(dt.notional_inr || 0).toLocaleString('en-IN')} ($${Math.round(dt.notional_usd || 0)})`;
+        } else {
+            ptValEl.textContent = "--";
+        }
+    }
+
     // Dynamic Progression Bar (reflects exact progression of this coin!)
     const progContainer = document.getElementById("progression-bar");
     if (progContainer && data.progression_steps) {
@@ -933,19 +946,46 @@ function renderActiveTradeWarRoom(at) {
     const marginEl = document.getElementById("wt-margin");
     if (marginEl) marginEl.textContent = `₹${margin.toLocaleString('en-IN')} (${lev}x)`;
 
+    // Delta Contract Specs & Point Values
+    const pointValEl = document.getElementById("wt-point-val");
+    const deltaContractsEl = document.getElementById("wt-delta-contracts");
+    const pointsMovedEl = document.getElementById("wt-points-moved");
+
+    let ptInr = Number(at.point_val_inr || 0);
+    let ptLabel = at.point_label || "1.0 pt";
+    let contracts = (at.delta_contracts !== undefined && at.delta_contracts !== null) ? at.delta_contracts : (at.units || "--");
+    let cUnit = at.contract_unit || "Lots";
+
+    if (pointValEl) {
+        pointValEl.textContent = ptInr > 0 ? `${ptLabel} = ±₹${ptInr.toFixed(2)}` : "--";
+    }
+    if (deltaContractsEl) {
+        deltaContractsEl.textContent = `${contracts} ${cUnit}`;
+    }
+
     // Live Mark & Real-time Dynamic PnL calculation
     let liveP = (marketStates[sym] && marketStates[sym].current_price) ? Number(marketStates[sym].current_price) : (Number(at.current_price) || entry);
     const markEl = document.getElementById("wt-mark");
     if (markEl) markEl.textContent = `$${formatPrice(sym, liveP)}`;
 
     let priceDiff = dir === "LONG" ? (liveP - entry) : (entry - liveP);
-    let pnlPct = entry > 0 ? (priceDiff / entry) * 100 : 0;
-    let pnlInr = margin * (pnlPct / 100) * lev;
+    let pointsMoved = priceDiff;
+    let ptsSign = pointsMoved >= 0 ? "+" : "";
+    let ptsFormatted = sym === "XRPUSD" ? pointsMoved.toFixed(4) : (Math.abs(pointsMoved) >= 100 ? pointsMoved.toFixed(1) : pointsMoved.toFixed(2));
+
+    if (pointsMovedEl) {
+        pointsMovedEl.textContent = `${ptsSign}${ptsFormatted} pts`;
+        pointsMovedEl.style.color = pointsMoved >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+    }
+
+    // Exact PnL using Delta Exchange point value formula
+    let pnlInr = ptInr > 0 ? (pointsMoved * ptInr) : (margin * ((entry > 0 ? priceDiff / entry : 0) * lev));
+    let pnlPct = margin > 0 ? (pnlInr / margin) * 100 : 0;
     let riskDist = Math.abs(entry - sl);
     let achR = riskDist > 0 ? (priceDiff / riskDist) : 0;
 
-    let pnlSign = priceDiff >= 0 ? "+" : "";
-    let pnlColor = priceDiff >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+    let pnlSign = pnlInr >= 0 ? "+" : "";
+    let pnlColor = pnlInr >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
 
     const pnlEl = document.getElementById("wt-pnl");
     if (pnlEl) {

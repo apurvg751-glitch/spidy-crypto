@@ -19,6 +19,7 @@ from market_data.feed_manager import FeedManager
 from market_data.models import Candle
 from market_data.l2_book import OrderBookEngine
 from market_data.derivatives_intel import DerivativesIntelEngine
+from market_data.delta_specs import DeltaPointValueEngine
 from strategy.setup_detector import SetupDetector, DetectedSetup
 from strategy.candidate_ranking import CandidateRankingEngine
 from trade_manager.manager import TradeManager
@@ -663,6 +664,12 @@ async def api_analysis(symbol: str):
         "kill_zone": kz.model_dump(),
         "smt": smt.model_dump(),
         "vwap": vwap_res.__dict__ if vwap_res else None,
+        "delta_telemetry": DeltaPointValueEngine.calculate_point_value(
+            symbol=sym,
+            price=price,
+            margin_used=settings.MAX_ALLOWED_MARGIN,
+            leverage=settings.DEFAULT_LEVERAGE
+        ).model_dump(),
         "levels": {
             "entry": round_price(sym, entry),
             "stop_loss": round_price(sym, stop),

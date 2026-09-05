@@ -305,10 +305,25 @@ class TelegramBotListener:
                         return f"${p_val:,.1f}"
                     return f"${p_val:,.2f}"
 
+                from market_data.delta_specs import DeltaPointValueEngine
+                pnl_calc = DeltaPointValueEngine.calculate_exact_pnl(
+                    symbol=coin,
+                    direction=direction,
+                    entry=entry,
+                    current_price=current_p,
+                    margin_used=margin,
+                    leverage=lev
+                )
+                pts_m = pnl_calc["points_moved"]
+                pts_sign = "+" if pts_m >= 0 else ""
+
                 lines.append(f"• Entry: *{fmt_p(entry)}* → Live Delta Mark: *{fmt_p(current_p)}*")
+                lines.append(f"• Delta Lots: *{pnl_calc['delta_contracts']} Contracts ({pnl_calc['contract_unit']}/lot)*")
+                lines.append(f"• Point Value: *{pnl_calc['point_label']} pt = ±₹{pnl_calc['point_val_inr']:.2f}* (±${pnl_calc['point_val_usd']:.4f})")
+                lines.append(f"• Points Moved: *{pts_sign}{pts_m:.2f} pts* ({pnl_sign}{fmt_p(abs(price_diff))})")
                 lines.append(f"• PnL: *{pnl_sign}{fmt_p(abs(price_diff))} ({pnl_sign}{pnl_pct:.2f}%)* {pnl_emoji}")
                 lines.append(f"• R-Multiple: *{pnl_sign}{achieved_r:.2f}R*")
-                lines.append(f"• Live Profit (₹{int(margin):,} Margin @ {lev}x): *{pnl_sign}₹{pnl_inr:,.2f}* {pnl_emoji}")
+                lines.append(f"• Live Profit (₹{int(margin):,} Margin @ {lev}x): *{pnl_sign}₹{pnl_calc['pnl_inr']:,.2f}* {pnl_emoji}")
                 lines.append("")
                 lines.append("🎯 *TARGETS & INVALIDATION*:")
                 lines.append(f"• Stop Loss: *{fmt_p(sl)}*")
