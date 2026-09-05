@@ -41,6 +41,7 @@ class TradeManager:
         self._lock = asyncio.Lock()
         self.active_trade: Optional[dict[str, Any]] = None
         self.global_status: str = "WATCHING"
+        self.is_paused: bool = False
 
         # Portfolio Safeguard State
         self.current_daily_loss: float = 0.0
@@ -52,15 +53,35 @@ class TradeManager:
 
     def restore_state_from_db(self):
         """Restores the single active trade from SQLite across application restarts."""
+        is_paused_cfg = self.db.get_config("bot_paused", "false").lower() == "true"
+        self.is_paused = is_paused_cfg
         stored = self.db.get_active_trade()
         if stored:
             self.active_trade = stored
-            self.global_status = stored.get("trade_status", "ACTIVE")
+            self.global_status = "STOPPED" if self.is_paused else stored.get("trade_status", "ACTIVE")
             logger.info(f"Restored active trade from DB: {stored['coin']} ({stored['direction']}) in status {self.global_status}")
         else:
             self.active_trade = None
-            self.global_status = "WATCHING"
-            logger.info("Trade Manager initialized: 0 active trades. Global slot is OPEN.")
+            self.global_status = "STOPPED" if self.is_paused else "WATCHING"
+            logger.info(f"Trade Manager initialized: 0 active trades. Global status is {self.global_status}.")
+
+    def pause_trading(self) -> str:
+        """Pauses the bot so no new trades are entered."""
+        self.is_paused = True
+        self.global_status = "STOPPED"
+        self.db.set_config("bot_paused", "true")
+        self._notify_state_change()
+        logger.info("Spidy Bot trading PAUSED by user.")
+        return "Trading paused. Bot will not enter any new trades."
+
+    def resume_trading(self) -> str:
+        """Resumes the bot so it can enter new trades."""
+        self.is_paused = False
+        self.global_status = "ACTIVE" if self.active_trade else "WATCHING"
+        self.db.set_config("bot_paused", "false")
+        self._notify_state_change()
+        logger.info("Spidy Bot trading RESUMED by user.")
+        return "Trading resumed. Bot is actively scanning and eligible to trade."
 
     async def process_candidates(
         self,
@@ -71,6 +92,10 @@ class TradeManager:
         Enforces MAX_ACTIVE_TRADES = 1 and selects the strongest setup if multiple trigger.
         """
         if not candidates:
+            return None
+
+        if self.is_paused:
+            logger.info(f"Spidy Bot is STOPPED/PAUSED. Rejecting {len(candidates)} candidate(s).")
             return None
 
         async with self._lock:
@@ -541,6 +566,7 @@ class TradeManager:
 
         return {
             "global_status": self.global_status,
+            "is_paused": self.is_paused,
             "has_active_trade": self.active_trade is not None,
             "active_trade": self.active_trade,
             "max_allowed_trades": settings.MAX_ACTIVE_TRADES,

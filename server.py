@@ -157,6 +157,7 @@ def get_system_status() -> dict[str, Any]:
 
     return {
         "global_status": trade_summary["global_status"],
+        "is_paused": trade_summary.get("is_paused", False),
         "active_trade": trade_summary["active_trade"],
         "reentry_status": trade_summary.get("reentry_status", {}),
         "markets": states,
@@ -170,6 +171,8 @@ async def background_scanner_loop():
     while True:
         try:
             await asyncio.sleep(10)
+            if trade_manager and getattr(trade_manager, "is_paused", False):
+                continue
             await run_market_scan()
         except asyncio.CancelledError:
             break
@@ -784,6 +787,66 @@ async def api_close_active_trade():
     if closed_coin:
         return {"status": "trade_closed", "message": f"Active trade on {closed_coin} cancelled. Global slot is now OPEN."}
     return {"status": "all_cleared", "message": "All trades cancelled and cleared. Global slot is OPEN."}
+
+
+@app.post("/api/pause")
+async def api_pause():
+    """Pauses the bot and cancels any active or waiting trade."""
+    closed_coin = None
+    if trade_manager.active_trade:
+        closed_coin = trade_manager.active_trade["coin"]
+        await trade_manager.emergency_close("POWER OFF / PAUSED BY USER")
+
+    # Clean any lingering waiting setups in DB
+    with db._get_connection() as conn:
+        conn.execute("""
+        UPDATE setups
+        SET trade_status = 'CANCELLED', final_result = 'CANCELLED ON POWER OFF'
+        WHERE trade_status IN ('WAITING', 'TRIGGERED', 'PENDING');
+        """)
+        conn.execute("DELETE FROM active_trade;")
+
+    trade_manager.active_trade = None
+    trade_manager.pause_trading()
+
+    try:
+        msg = (
+            "🛑 *SPIDY BOT POWERED OFF / STOPPED*\n\n"
+            f"• Action: Trading paused and powered off by user\n"
+            f"• Closed Position: *{closed_coin or 'None'}*\n"
+            "• Status: *STOPPED*\n\n"
+            "Bot will NOT take any trades until you send `/start` or `/resume`."
+        )
+        await telegram.send_message(msg)
+    except Exception as e:
+        logger.warning(f"Telegram notice error: {e}")
+
+    await broadcast_full_status()
+    return {
+        "status": "stopped",
+        "message": f"Spidy Bot STOPPED. {f'Active trade on {closed_coin} cancelled.' if closed_coin else 'All slots cleared.'} No new trades will be entered."
+    }
+
+
+@app.post("/api/resume")
+async def api_resume():
+    """Resumes the bot so it can enter new trades."""
+    trade_manager.resume_trading()
+
+    try:
+        msg = (
+            "▶️ *SPIDY BOT RESUMED / POWERED ON*\n\n"
+            "• Action: 24/7 scanner is active across all 6 markets\n"
+            "• Global Slot: *OPEN (0/1)*\n"
+            "• Status: *WATCHING*\n\n"
+            "Ready to select high-conviction trades! 🚀"
+        )
+        await telegram.send_message(msg)
+    except Exception as e:
+        logger.warning(f"Telegram notice error: {e}")
+
+    await broadcast_full_status()
+    return {"status": "resumed", "message": "Spidy Bot RESUMED. 24/7 scanner active."}
 
 
 @app.post("/api/breakeven")

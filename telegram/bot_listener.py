@@ -106,12 +106,36 @@ class TelegramBotListener:
                 await self._handle_callback(None, "CMD_BE", chat_id)
             elif text in ("/partial", "partial"):
                 await self._handle_callback(None, "CMD_PARTIAL", chat_id)
-            elif text in ("/close", "close", "/stop", "stop", "/exit", "exit"):
+            elif text in ("/close", "close", "/exit", "exit"):
                 await self._handle_callback(None, "CMD_CLOSE", chat_id)
+            elif text in ("/stop", "stop", "/pause", "pause", "/poweroff", "poweroff"):
+                closed_msg = ""
+                if self.trade_manager.active_trade:
+                    success, closed_msg = await self.trade_manager.emergency_close("POWERED OFF VIA TELEGRAM")
+                self.trade_manager.pause_trading()
+                await self._send_reply(
+                    "🛑 *SPIDY BOT POWERED OFF / STOPPED*\n\n"
+                    f"{'• ' + closed_msg + chr(10) if closed_msg else ''}"
+                    "• Trading is PAUSED.\n"
+                    "• No new trades will be opened.\n\n"
+                    "Send `/start` or `/resume` whenever you want to power Spidy back on! 🚀",
+                    chat_id
+                )
+            elif text in ("/start", "start", "/resume", "resume", "/poweron", "poweron"):
+                self.trade_manager.resume_trading()
+                await self._send_reply(
+                    "▶️ *SPIDY BOT POWERED ON / RESUMED*\n\n"
+                    "• 24/7 Institutional Scanner is ACTIVE.\n"
+                    "• Global slot is OPEN (0/1).\n"
+                    "• Monitoring all 6 Delta Exchange markets! 🚀",
+                    chat_id
+                )
             elif text in ("/help", "help"):
                 await self._send_reply(
                     "🕷️ *SPIDY CRYPTO COMMAND HUB*\n\n"
                     "• `/status` — Live Telemetry & Institutional Thinking Report\n"
+                    "• `/stop` or `/pause` — 🛑 Power Off Bot & Cancel All Trades\n"
+                    "• `/start` or `/resume` — ▶️ Power On Bot & Resume 24/7 Scanning\n"
                     "• `/be` — Move Stop Loss to Breakeven (Risk-Free Shield)\n"
                     "• `/partial` — Secure 50% Profit into Target 1\n"
                     "• `/close` — Emergency Exit Active Trade\n"

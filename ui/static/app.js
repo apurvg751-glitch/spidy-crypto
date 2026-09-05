@@ -53,6 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     // Operational action buttons
+    const btnPower = document.getElementById("btn-power-toggle");
+    if (btnPower) btnPower.addEventListener("click", toggleBotPower);
+
     const btnScan = document.getElementById("btn-scan");
     if (btnScan) btnScan.addEventListener("click", triggerScan);
 
@@ -350,13 +353,54 @@ function updateHUD(data) {
     activeTrade = data.active_trade;
     const lockDot = document.getElementById("lock-status-dot");
     const lockText = document.getElementById("lock-status-text");
+    const standbyDot = document.getElementById("standby-dot");
+    const standbyTitle = document.getElementById("standby-title");
+    const standbyDesc = document.getElementById("standby-desc");
+    const powerBtn = document.getElementById("btn-power-toggle");
 
-    if (activeTrade && (activeTrade.trade_status === "WAITING" || activeTrade.trade_status === "ACTIVE")) {
-        lockDot.className = "status-dot amber";
-        lockText.textContent = `LOCKED (${activeTrade.coin})`;
+    const isPaused = data.is_paused || data.global_status === "STOPPED";
+
+    if (isPaused) {
+        if (lockDot) lockDot.className = "status-dot red";
+        if (lockText) lockText.textContent = "BOT STOPPED / PAUSED";
+
+        if (standbyDot) standbyDot.className = "status-dot red";
+        if (standbyTitle) {
+            standbyTitle.textContent = "SPIDY BOT POWERED OFF / STOPPED";
+            standbyTitle.style.color = "var(--rose-neon)";
+        }
+        if (standbyDesc) {
+            standbyDesc.textContent = "Trading is paused. Bot will not enter any trades. Send /resume on Telegram or click Resume below.";
+        }
+        if (powerBtn) {
+            powerBtn.textContent = "▶️ Power On / Resume Spidy Bot";
+            powerBtn.style.borderColor = "var(--emerald-neon)";
+            powerBtn.style.color = "var(--emerald-neon)";
+        }
+    } else if (activeTrade && (activeTrade.trade_status === "WAITING" || activeTrade.trade_status === "ACTIVE")) {
+        if (lockDot) lockDot.className = "status-dot amber";
+        if (lockText) lockText.textContent = `LOCKED (${activeTrade.coin})`;
+        if (powerBtn) {
+            powerBtn.textContent = "🛑 Power Off / Pause Spidy Bot";
+            powerBtn.style.borderColor = "var(--rose-neon)";
+            powerBtn.style.color = "var(--rose-neon)";
+        }
     } else {
-        lockDot.className = "status-dot green";
-        lockText.textContent = "SLOT OPEN (0/1)";
+        if (lockDot) lockDot.className = "status-dot green";
+        if (lockText) lockText.textContent = "SLOT OPEN (0/1)";
+        if (standbyDot) standbyDot.className = "status-dot green";
+        if (standbyTitle) {
+            standbyTitle.textContent = "GLOBAL SLOT OPEN (0/1)";
+            standbyTitle.style.color = "var(--emerald-neon)";
+        }
+        if (standbyDesc) {
+            standbyDesc.textContent = "24/7 Institutional Scanner Active Across 6 Delta Exchange India Markets";
+        }
+        if (powerBtn) {
+            powerBtn.textContent = "🛑 Power Off / Pause Spidy Bot";
+            powerBtn.style.borderColor = "var(--rose-neon)";
+            powerBtn.style.color = "var(--rose-neon)";
+        }
     }
 
     // Render Dedicated Active Trade War Room Banner
@@ -1066,6 +1110,23 @@ async function triggerPartial() {
         fetchStatus();
     } catch (e) {
         console.error("Partial error", e);
+    }
+}
+
+async function toggleBotPower() {
+    const powerBtn = document.getElementById("btn-power-toggle");
+    const isPaused = powerBtn && powerBtn.textContent.includes("Resume");
+    const endpoint = isPaused ? "/api/resume" : "/api/pause";
+    try {
+        if (powerBtn) powerBtn.disabled = true;
+        const res = await fetch(endpoint, { method: "POST" });
+        const data = await res.json();
+        alert(data.message || "State updated.");
+        await fetchStatus();
+    } catch (e) {
+        console.error("Power toggle error", e);
+    } finally {
+        if (powerBtn) powerBtn.disabled = false;
     }
 }
 

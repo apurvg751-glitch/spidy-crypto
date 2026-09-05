@@ -155,6 +155,11 @@ class Database:
 
             CREATE INDEX IF NOT EXISTS idx_consumed_coin ON consumed_setups(coin);
             CREATE INDEX IF NOT EXISTS idx_reentry_coin ON reentry_audits(coin);
+
+            CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
             """)
 
             # Safe column migrations if existing database file was already created
@@ -651,5 +656,22 @@ class Database:
             conn.execute("DELETE FROM sent_alerts;")
             conn.execute("DELETE FROM consumed_setups;")
             conn.execute("DELETE FROM market_cooldowns;")
-            conn.execute("DELETE FROM reentry_audits;")
             conn.execute("DELETE FROM model_stats;")
+
+    def set_config(self, key: str, value: str):
+        """Sets a persistent system configuration key-value pair."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO system_config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value;",
+                (key, str(value))
+            )
+
+    def get_config(self, key: str, default: str = "") -> str:
+        """Retrieves a persistent system configuration value."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM system_config WHERE key = ?;", (key,))
+            row = cursor.fetchone()
+            if row:
+                return str(row[0])
+            return default

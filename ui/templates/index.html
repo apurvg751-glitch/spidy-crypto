@@ -78,12 +78,12 @@
     <!-- Standby Banner (Slot Open) -->
     <div id="global-standby-banner" class="standby-banner">
         <div style="display:flex; align-items:center; gap:10px;">
-            <div class="status-dot green"></div>
-            <span style="font-weight:800; color:var(--emerald-neon); font-size:12px; font-family:var(--font-mono); letter-spacing:0.5px;">GLOBAL SLOT OPEN (0/1)</span>
+            <div id="standby-dot" class="status-dot green"></div>
+            <span id="standby-title" style="font-weight:800; color:var(--emerald-neon); font-size:12px; font-family:var(--font-mono); letter-spacing:0.5px;">GLOBAL SLOT OPEN (0/1)</span>
             <span style="color:var(--text-muted); font-size:12px;">•</span>
-            <span style="color:var(--text-secondary); font-size:12px;">24/7 Institutional Scanner Active Across 6 Delta Exchange India Markets</span>
+            <span id="standby-desc" style="color:var(--text-secondary); font-size:12px;">24/7 Institutional Scanner Active Across 6 Delta Exchange India Markets</span>
         </div>
-        <div style="font-family:var(--font-mono); font-size:11px; color:var(--cyan-neon);">
+        <div id="standby-subtext" style="font-family:var(--font-mono); font-size:11px; color:var(--cyan-neon);">
             MAX RISK BOUND: ₹3,000 MARGIN @ 6x LEVERAGE (₹18,000 NOTIONAL)
         </div>
     </div>
@@ -312,6 +312,7 @@
             <div class="panel-title">Operations & Intelligence Controls</div>
 
             <div style="display:flex; flex-direction:column; gap:8px;">
+                <button class="btn" id="btn-power-toggle" style="border-color:var(--rose-neon); color:var(--rose-neon); font-weight:800;">🛑 Power Off / Pause Spidy Bot</button>
                 <button class="btn" id="btn-scan">⚡ Trigger Market Scan (10 Models)</button>
                 <div id="scan-result-box" style="display:none; background:rgba(0,240,255,0.08); border:1px solid var(--cyan-neon); padding:8px 10px; border-radius:6px; font-size:11px; font-family:var(--font-mono);">
                     <div style="color:var(--cyan-neon); font-weight:700; margin-bottom:4px;">⚡ SCAN TELEMETRY:</div>
@@ -416,6 +417,6 @@
     <div>Zero Auto Execution • 6 Models • Multi-Timeframe • Telegram Connected</div>
 </footer>
 
-<script src="/static/app.js?v=3.8.0"></script>
+<script src="/static/app.js?v=3.8.1"></script>
 </body>
 </html>
