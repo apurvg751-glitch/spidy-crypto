@@ -452,33 +452,35 @@ class TradeManager:
                     if current_r >= 1.0:
                         await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=current_r)
 
-                # 2b. Institutional Velocity & Stagnation Stop Engine (60m Breakeven / 90m Scratch)
-                now_ts = int(time.time())
-                act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
-                elapsed_seconds = now_ts - act_ts
-                current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
+                # 2b. Institutional Velocity & Stagnation Stop Engine (Guarded by ENABLE_TIME_BASED_STAGNATION)
+                # By default FALSE: prevents premature 60m breakeven moves and 90m scratch exits that suffocate trades.
+                if getattr(settings, "ENABLE_TIME_BASED_STAGNATION", False):
+                    now_ts = int(time.time())
+                    act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
+                    elapsed_seconds = now_ts - act_ts
+                    current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
 
-                # If trade held > 60 mins without hitting +0.5R, ratchet Stop Loss to Breakeven
-                if elapsed_seconds >= 3600 and current_r < 0.50 and not self.active_trade.get("be_moved"):
-                    fee_buf = 0.02 * risk if risk > 0 else 0.0
-                    be_level = round_price(symbol, entry + fee_buf if direction == "LONG" else entry - fee_buf)
-                    if (direction == "LONG" and self.active_trade["stop_loss"] < be_level) or (direction == "SHORT" and self.active_trade["stop_loss"] > be_level):
-                        old_sl = self.active_trade["stop_loss"]
-                        self.active_trade["stop_loss"] = be_level
-                        self.active_trade["be_moved"] = True
-                        self.db.set_active_trade(self.active_trade)
-                        logger.info(f"60-Min Stagnation Guard applied for {symbol}: {old_sl} -> {be_level}")
-                        await self.telegram.send_trade_lifecycle_update(
-                            symbol, direction, "STAGNATION_BE", current_price, setup_id,
-                            details=f"60-Min Velocity Guard: Sideways consolidation detected. Stop Loss locked at Breakeven ({format_price(symbol, be_level)})."
-                        )
-                        self._notify_state_change()
+                    # If trade held > 60 mins without hitting +0.5R, ratchet Stop Loss to Breakeven
+                    if elapsed_seconds >= 3600 and current_r < 0.50 and not self.active_trade.get("be_moved"):
+                        fee_buf = 0.02 * risk if risk > 0 else 0.0
+                        be_level = round_price(symbol, entry + fee_buf if direction == "LONG" else entry - fee_buf)
+                        if (direction == "LONG" and self.active_trade["stop_loss"] < be_level) or (direction == "SHORT" and self.active_trade["stop_loss"] > be_level):
+                            old_sl = self.active_trade["stop_loss"]
+                            self.active_trade["stop_loss"] = be_level
+                            self.active_trade["be_moved"] = True
+                            self.db.set_active_trade(self.active_trade)
+                            logger.info(f"60-Min Stagnation Guard applied for {symbol}: {old_sl} -> {be_level}")
+                            await self.telegram.send_trade_lifecycle_update(
+                                symbol, direction, "STAGNATION_BE", current_price, setup_id,
+                                details=f"60-Min Velocity Guard: Sideways consolidation detected. Stop Loss locked at Breakeven ({format_price(symbol, be_level)})."
+                            )
+                            self._notify_state_change()
 
-                # If trade held > 90 mins and still stagnant within +/- 0.25R, scratch at market
-                if elapsed_seconds >= 5400 and (-0.25 <= current_r <= 0.25):
-                    logger.info(f"90-Min Stagnation Scratch Exit for {symbol} at {current_price} ({current_r:.2f}R)")
-                    await self._close_trade("COMPLETED" if current_r >= 0 else "STOPPED", current_price, f"90-Min Stagnation Scratch Exit ({current_r:.2f}R)")
-                    return
+                    # If trade held > 90 mins and still stagnant within +/- 0.25R, scratch at market
+                    if elapsed_seconds >= 5400 and (-0.25 <= current_r <= 0.25):
+                        logger.info(f"90-Min Stagnation Scratch Exit for {symbol} at {current_price} ({current_r:.2f}R)")
+                        await self._close_trade("COMPLETED" if current_r >= 0 else "STOPPED", current_price, f"90-Min Stagnation Scratch Exit ({current_r:.2f}R)")
+                        return
 
                 # 3. Stop Loss Check (tested on pullbacks, not on the exact tick that ratcheted stop)
                 if not trail_res.stop_moved:

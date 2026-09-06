@@ -104,7 +104,7 @@ def test_hud_telemetry_and_keyboard():
     )
     assert "SPIDY CRYPTO 2.0 — MASTER CONTROL HUD" in hud_text
     assert "₹420.00" in hud_text
-    assert "BTCUSD" in hud_text
+    assert "XRPUSD" in hud_text
 
 
 def test_daily_executive_brief_formatting():

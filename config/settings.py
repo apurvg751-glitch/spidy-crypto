@@ -21,8 +21,12 @@ class Settings(BaseModel):
     DELTA_WS_URL: str = os.getenv("DELTA_WS_URL", "wss://public-socket.india.delta.exchange")
     DELTA_WS_FALLBACK_URL: str = os.getenv("DELTA_WS_FALLBACK_URL", "wss://socket.india.delta.exchange")
 
-    # Markets
-    SYMBOLS: list[str] = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "AVAXUSD"]
+    # Markets (Curated High-Probability Institutional Trio - BTC is anchor only)
+    SYMBOLS: list[str] = ["XRPUSD", "ETHUSD", "AVAXUSD"]
+    ALL_SYMBOLS: list[str] = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "AVAXUSD"]
+
+    # Stagnation & Premature Breakeven Guards (Disabled to prevent suffocating trades)
+    ENABLE_TIME_BASED_STAGNATION: bool = os.getenv("ENABLE_TIME_BASED_STAGNATION", "False").lower() in ("true", "1")
 
     # Multi-Timeframe Architecture (Configurable)
     TIMEFRAME_MACRO: str = "4h"     # 4H = Macro market bias

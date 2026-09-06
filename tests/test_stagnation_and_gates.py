@@ -1,5 +1,6 @@
 import pytest
 import time
+from config.settings import settings
 from market_data.models import MultiTimeframeContext, Candle
 from strategy.confirmation_engine import ConfirmationEngine
 
@@ -44,8 +45,9 @@ def test_hard_gates_macro_trend_failure():
 
 
 @pytest.mark.asyncio
-async def test_velocity_stagnation_60m_breakeven(mock_trade_manager):
+async def test_velocity_stagnation_60m_breakeven(mock_trade_manager, monkeypatch):
     tm = mock_trade_manager
+    monkeypatch.setattr(settings, "ENABLE_TIME_BASED_STAGNATION", True)
 
     # Set active trade entered 65 minutes ago (3900 seconds ago)
     now_ts = int(time.time())
@@ -79,8 +81,9 @@ async def test_velocity_stagnation_60m_breakeven(mock_trade_manager):
 
 
 @pytest.mark.asyncio
-async def test_velocity_stagnation_90m_scratch_exit(mock_trade_manager):
+async def test_velocity_stagnation_90m_scratch_exit(mock_trade_manager, monkeypatch):
     tm = mock_trade_manager
+    monkeypatch.setattr(settings, "ENABLE_TIME_BASED_STAGNATION", True)
 
     # Set active trade entered 95 minutes ago (5700 seconds ago)
     now_ts = int(time.time())
