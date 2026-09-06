@@ -189,10 +189,12 @@ def get_system_status() -> dict[str, Any]:
 
 
 async def background_scanner_loop():
-    """Periodic background scan every 10 seconds."""
+    """Periodic background scan every 10 seconds with 11:59 PM IST daily loss rollover check."""
     while True:
         try:
             await asyncio.sleep(10)
+            if trade_manager:
+                trade_manager.check_daily_loss_reset()
             if trade_manager and getattr(trade_manager, "is_paused", False):
                 continue
             await run_market_scan()

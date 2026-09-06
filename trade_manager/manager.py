@@ -44,18 +44,61 @@ class TradeManager:
         self.global_status: str = "WATCHING"
         self.is_paused: bool = False
 
-        # Portfolio Safeguard State
+        # Portfolio Safeguard State & IST 11:59 PM Midnight Rollover
+        from datetime import datetime, timezone, timedelta
+        self.ist_tz = timezone(timedelta(hours=5, minutes=30))
+        self.current_daily_date: str = datetime.now(self.ist_tz).strftime("%Y-%m-%d")
         self.current_daily_loss: float = 0.0
         self.consecutive_losses: int = 0
         self.last_trade_close_time: int = 0
 
-        # Restore any active trade from database upon initialization (Crash Recovery)
+        # Restore any active trade and daily loss from database upon initialization (Crash Recovery)
         self.restore_state_from_db()
 
+    def check_daily_loss_reset(self) -> bool:
+        """
+        Checks if an IST calendar day has rolled over at 11:59 PM IST (23:59 IST).
+        If the date has changed, resets current_daily_loss to 0.0 and refreshes the ₹420.00 budget.
+        Returns True if a reset was triggered.
+        """
+        from datetime import datetime
+        today_ist = datetime.now(self.ist_tz).strftime("%Y-%m-%d")
+        if self.current_daily_date != today_ist:
+            old_date = self.current_daily_date
+            old_loss = self.current_daily_loss
+            self.current_daily_date = today_ist
+            self.current_daily_loss = 0.0
+            if self.db:
+                self.db.set_config("daily_loss_date", today_ist)
+                self.db.set_config("daily_loss_amount", "0.0")
+            logger.info(
+                f"🌅 11:59 PM IST Midnight Rollover: Daily loss reset from ₹{old_loss:.2f} to ₹0.00 "
+                f"for new trading day {today_ist}. Full ₹{settings.MAX_DAILY_LOSS:.2f} daily loss budget restored!"
+            )
+            return True
+        return False
+
     def restore_state_from_db(self):
-        """Restores the single active trade from SQLite across application restarts."""
+        """Restores the single active trade and daily loss from SQLite across application restarts."""
         is_paused_cfg = self.db.get_config("bot_paused", "false").lower() == "true"
         self.is_paused = is_paused_cfg
+
+        # Restore or reset daily loss based on IST 11:59 PM date
+        from datetime import datetime
+        today_ist = datetime.now(self.ist_tz).strftime("%Y-%m-%d")
+        saved_date = self.db.get_config("daily_loss_date", "")
+        if saved_date == today_ist:
+            self.current_daily_date = today_ist
+            try:
+                self.current_daily_loss = float(self.db.get_config("daily_loss_amount", "0.0"))
+            except (ValueError, TypeError):
+                self.current_daily_loss = 0.0
+        else:
+            self.current_daily_date = today_ist
+            self.current_daily_loss = 0.0
+            self.db.set_config("daily_loss_date", today_ist)
+            self.db.set_config("daily_loss_amount", "0.0")
+
         stored = self.db.get_active_trade()
         if stored:
             self.active_trade = stored
@@ -64,7 +107,7 @@ class TradeManager:
         else:
             self.active_trade = None
             self.global_status = "STOPPED" if self.is_paused else "WATCHING"
-            logger.info(f"Trade Manager initialized: 0 active trades. Global status is {self.global_status}.")
+            logger.info(f"Trade Manager initialized: 0 active trades. Global status is {self.global_status}. Daily loss: ₹{self.current_daily_loss:.2f} (Date: {today_ist} IST).")
 
     def pause_trading(self) -> str:
         """Pauses the bot so no new trades are entered."""
@@ -206,7 +249,8 @@ class TradeManager:
                 winner.entry = retest_res.optimal_entry
                 winner.reasons.append(f"Retest Snapper: Discount entry at {winner.entry} ({retest_res.entry_type}, saved {retest_res.discount_pips})")
 
-            # 3. Position Sizing & Portfolio Risk Check
+            # 3. Position Sizing & Portfolio Risk Check (with 11:59 PM IST daily rollover check)
+            self.check_daily_loss_reset()
             pos_calc = PositionSizer.calculate_position(
                 entry=winner.entry,
                 stop_loss=winner.stop_loss,
@@ -573,7 +617,11 @@ class TradeManager:
                 self.consecutive_losses = 0
             else:
                 self.consecutive_losses += 1
+                self.check_daily_loss_reset()
                 self.current_daily_loss += abs(pnl)
+                if self.db:
+                    self.db.set_config("daily_loss_date", self.current_daily_date)
+                    self.db.set_config("daily_loss_amount", str(round(self.current_daily_loss, 2)))
         else:
             # CANCELLED or manual emergency exit: exact dynamic calculation
             achieved_r = round(price_diff / max(risk_dist, 1e-4), 2)
@@ -584,7 +632,11 @@ class TradeManager:
             elif achieved_r < -0.08:
                 terminal_status = "STOPPED"
                 self.consecutive_losses += 1
+                self.check_daily_loss_reset()
                 self.current_daily_loss += abs(pnl)
+                if self.db:
+                    self.db.set_config("daily_loss_date", self.current_daily_date)
+                    self.db.set_config("daily_loss_amount", str(round(self.current_daily_loss, 2)))
             else:
                 terminal_status = "CANCELLED"
 
@@ -654,10 +706,14 @@ class TradeManager:
                 logger.error(f"Error in state change callback: {e}")
 
     def get_current_status_summary(self) -> dict[str, Any]:
+        self.check_daily_loss_reset()
         reentry_status = {}
         if hasattr(self, "reentry_manager"):
             for s in settings.SYMBOLS:
                 reentry_status[s] = self.reentry_manager.get_market_status(s)
+
+        max_dl = getattr(settings, "MAX_DAILY_LOSS", 420.0)
+        daily_loss_rem = max(0.0, max_dl - self.current_daily_loss)
 
         return {
             "global_status": self.global_status,
@@ -665,7 +721,10 @@ class TradeManager:
             "has_active_trade": self.active_trade is not None,
             "active_trade": self.active_trade,
             "max_allowed_trades": settings.MAX_ACTIVE_TRADES,
-            "current_daily_loss": self.current_daily_loss,
+            "current_daily_loss": round(self.current_daily_loss, 2),
+            "max_daily_loss": max_dl,
+            "daily_loss_remaining": round(daily_loss_rem, 2),
+            "current_daily_date": getattr(self, "current_daily_date", ""),
             "consecutive_losses": self.consecutive_losses,
             "reentry_status": reentry_status
         }
