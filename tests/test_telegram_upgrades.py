@@ -67,11 +67,11 @@ def test_emoji_progress_bar_calculation():
 
 
 def test_hud_telemetry_and_keyboard():
-    """Validates 6-button HUD interactive keyboard and telemetry message structure."""
+    """Validates master HUD interactive keyboard and telemetry message structure."""
     kb = get_hud_inline_keyboard()
     assert "inline_keyboard" in kb
     rows = kb["inline_keyboard"]
-    assert len(rows) == 3
+    assert len(rows) == 4
 
     # Row 1: Breakeven & 50% Partial
     assert rows[0][0]["text"] == "🎯 Breakeven"
@@ -79,17 +79,23 @@ def test_hud_telemetry_and_keyboard():
     assert rows[0][1]["text"] == "💰 50% Partial"
     assert rows[0][1]["callback_data"] == "CMD_PARTIAL"
 
-    # Row 2: Emergency Exit & Scan All
-    assert rows[1][0]["text"] == "🛑 Emergency Exit"
-    assert rows[1][0]["callback_data"] == "CMD_CLOSE"
-    assert rows[1][1]["text"] == "⚡ Scan All (9 Models)"
-    assert rows[1][1]["callback_data"] == "CMD_SCAN"
+    # Row 2: Instant Check Up & View Chart
+    assert rows[1][0]["text"] == "⚡ Instant Check Up"
+    assert rows[1][0]["callback_data"] == "CMD_STATUS"
+    assert rows[1][1]["text"] == "📈 View Chart"
+    assert rows[1][1]["callback_data"] == "CMD_CHART"
 
-    # Row 3: View Chart & Refresh HUD
-    assert rows[2][0]["text"] == "📈 View Chart"
-    assert rows[2][0]["callback_data"] == "CMD_CHART"
-    assert rows[2][1]["text"] == "🔄 Refresh HUD"
-    assert rows[2][1]["callback_data"] == "CMD_HUD_REFRESH"
+    # Row 3: Emergency Exit & Scan All
+    assert rows[2][0]["text"] == "🛑 Emergency Exit"
+    assert rows[2][0]["callback_data"] == "CMD_CLOSE"
+    assert rows[2][1]["text"] == "⚡ Scan (9 Models)"
+    assert rows[2][1]["callback_data"] == "CMD_SCAN"
+
+    # Row 4: Refresh HUD & Daily Journal
+    assert rows[3][0]["text"] == "🔄 Refresh HUD"
+    assert rows[3][0]["callback_data"] == "CMD_HUD_REFRESH"
+    assert rows[3][1]["text"] == "📖 Daily Journal"
+    assert rows[3][1]["callback_data"] == "CMD_JOURNAL"
 
     hud_text = format_hud_telemetry(
         active_trade=None,

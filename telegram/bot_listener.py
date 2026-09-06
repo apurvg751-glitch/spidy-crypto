@@ -117,7 +117,7 @@ class TelegramBotListener:
                 await self._handle_scan_command(chat_id)
             elif text in ("/brief", "brief", "/daily", "daily", "/recap", "recap"):
                 await self._send_daily_brief_reply(chat_id)
-            elif text in ("/status", "status"):
+            elif text in ("/status", "status", "/checkup", "checkup", "/check", "check"):
                 await self._send_status_reply(chat_id)
             elif text in ("/journal", "journal", "/pnl", "pnl"):
                 await self._send_journal_reply(chat_id)
@@ -218,7 +218,7 @@ class TelegramBotListener:
                     if success else f"⚠️ {msg}"
                 )
 
-            elif cb_data == "CMD_STATUS":
+            elif cb_data in ("CMD_STATUS", "CMD_CHECKUP"):
                 await self._send_status_reply(target_chat)
                 return
 

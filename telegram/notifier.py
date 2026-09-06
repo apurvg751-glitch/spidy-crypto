@@ -29,7 +29,7 @@ def get_trade_inline_keyboard() -> dict[str, Any]:
 
 
 def get_hud_inline_keyboard() -> dict[str, Any]:
-    """Master 6-button HUD interactive keyboard."""
+    """Master HUD interactive keyboard with prominent Instant Check Up button."""
     return {
         "inline_keyboard": [
             [
@@ -37,12 +37,16 @@ def get_hud_inline_keyboard() -> dict[str, Any]:
                 {"text": "💰 50% Partial", "callback_data": "CMD_PARTIAL"}
             ],
             [
-                {"text": "🛑 Emergency Exit", "callback_data": "CMD_CLOSE"},
-                {"text": "⚡ Scan All (9 Models)", "callback_data": "CMD_SCAN"}
+                {"text": "⚡ Instant Check Up", "callback_data": "CMD_STATUS"},
+                {"text": "📈 View Chart", "callback_data": "CMD_CHART"}
             ],
             [
-                {"text": "📈 View Chart", "callback_data": "CMD_CHART"},
-                {"text": "🔄 Refresh HUD", "callback_data": "CMD_HUD_REFRESH"}
+                {"text": "🛑 Emergency Exit", "callback_data": "CMD_CLOSE"},
+                {"text": "⚡ Scan (9 Models)", "callback_data": "CMD_SCAN"}
+            ],
+            [
+                {"text": "🔄 Refresh HUD", "callback_data": "CMD_HUD_REFRESH"},
+                {"text": "📖 Daily Journal", "callback_data": "CMD_JOURNAL"}
             ]
         ]
     }
