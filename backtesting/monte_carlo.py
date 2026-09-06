@@ -14,7 +14,7 @@ class MonteCarloEngine:
 
     @staticmethod
     def run_simulation(
-        initial_capital: float = 3000.0,
+        initial_capital: float = 4200.0,
         win_rate: float = 0.65,
         avg_win_r: float = 1.8,
         avg_loss_r: float = 1.0,

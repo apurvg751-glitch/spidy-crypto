@@ -3,10 +3,10 @@
 **Trader:** Apurv Gupta  
 **System:** SPIDY CRYPTO 2.0 (Autonomous Trading Intelligence)  
 **Exchange:** Delta Exchange India  
-**Allocated Margin:** ₹3,000.00  
-**Position Size (Notional):** ₹18,000.00  
+**Allocated Margin:** ₹4,200.00  
+**Position Size (Notional):** ₹25,200.00  
 **Leverage:** 6x Leverage  
-**Risk per Trade:** Evaluated on ₹3,000 Margin (1.50% / ₹45.00 / 1R)  
+**Risk per Trade:** Evaluated on ₹4,200 Margin (1.50% / ₹63.00 / 1R)  
 
 ---
 

@@ -52,8 +52,8 @@ class TradeJournalEngine:
                         status = r.get("trade_status", "")
                         entry = float(r.get("entry") or 0.0)
                         stop = float(r.get("stop_loss") or 0.0)
-                        # Risk Unit: Evaluated on ₹3,000 Margin (1.5% = ₹45 per 1R for ₹18,000 position @ 6x)
-                        risk_unit = (settings.MAX_ALLOWED_MARGIN or 3000.0) * (settings.MAX_RISK_PCT / 100.0)
+                        # Risk Unit: Evaluated on ₹4,200 Margin (1.5% = ₹63 per 1R for ₹25,200 position @ 6x)
+                        risk_unit = (settings.MAX_ALLOWED_MARGIN or 4200.0) * (settings.MAX_RISK_PCT / 100.0)
                         pnl_val = ach_r * risk_unit
                         account_pct = ach_r * settings.MAX_RISK_PCT  # e.g. 2.5R * 1.5% = +3.75% gain on margin
 
@@ -119,7 +119,7 @@ class TradeJournalEngine:
 
         lines = [
             "*SPIDY CRYPTO - DAILY TRADE JOURNAL*",
-            f"Date: {d_str} | Margin: ₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x Leverage (₹18,000 Position)\n",
+            f"Date: {d_str} | Margin: ₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x Leverage (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Position)\n",
             "*NET PERFORMANCE SUMMARY:*",
             f"• Decided Trades: *{data['decided_trades']}* ({data['wins']}W / {data['losses']}L / {data['scratches']} Scratched/Cancelled)",
             f"• Win Rate: *{data['win_rate']}%*",
@@ -158,13 +158,13 @@ class TradeJournalEngine:
         lines.extend([
             "",
             "*RISK MATH EDUCATION NOTE:*",
-            "• 1R = 1.5% Risk on ₹3,000 Margin (₹45.00)",
-            "• +2.5R = 2.5 × 1.5% = +3.75% Gain on Margin (+₹112.50)",
+            f"• 1R = 1.5% Risk on ₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin (₹{(settings.MAX_ALLOWED_MARGIN or 4200.0) * 0.015:.2f})",
+            f"• +2.5R = 2.5 × 1.5% = +3.75% Gain on Margin (+₹{(settings.MAX_ALLOWED_MARGIN or 4200.0) * 0.015 * 2.5:.2f})",
             "• (R is a Risk Multiple, NEVER 250%!)",
             "",
             "*EXECUTION DISCIPLINE GRADE: A+*",
             "• Zero Revenge Trades: Verified (1-Trade Lock Enforced)",
-            f"• Position Sizing: 100% Compliant (₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x Leverage -> ₹18,000 Position)"
+            f"• Position Sizing: 100% Compliant (₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x Leverage -> ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Position)"
         ])
 
         return "\n".join(lines)
@@ -215,7 +215,7 @@ class TradeJournalEngine:
 <body>
     <div class="header">
         <div class="title">SPIDY CRYPTO 2.0 - DAILY INSTITUTIONAL JOURNAL</div>
-        <div style="color: #718096; font-size: 13px; margin-top: 4px;">Date: {d_str} | Margin: ₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x Leverage (₹18,000 Position)</div>
+        <div style="color: #718096; font-size: 13px; margin-top: 4px;">Date: {d_str} | Margin: ₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x Leverage (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Position)</div>
     </div>
 
     <div class="kpi-grid">

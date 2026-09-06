@@ -141,7 +141,7 @@ class TelegramBotListener:
                     "• `/close` — Emergency Exit Active Trade\n"
                     "• `/journal` — Daily Performance & Metrics Summary\n"
                     "• `/reset` — Wipe State & Restart Market Scans Fresh\n\n"
-                    "All trades strictly follow ₹3,000 Margin @ 6x Leverage! 🚀",
+                    f"All trades strictly follow ₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x Leverage! 🚀",
                     chat_id
                 )
             elif text in ("/reset", "reset"):
@@ -151,7 +151,7 @@ class TelegramBotListener:
                 await self._send_reply(
                     "🔄 *SPIDY CRYPTO SYSTEM RESET COMPLETE*\n\n"
                     "• All historical setups, active locks, and cooldowns have been cleared.\n"
-                    f"• Allocated Margin: *₹{int(settings.MAX_ALLOWED_MARGIN):,}* @ *{settings.DEFAULT_LEVERAGE}x Leverage* (₹18,000 Position Size).\n"
+                    f"• Allocated Margin: *₹{int(settings.MAX_ALLOWED_MARGIN):,}* @ *{settings.DEFAULT_LEVERAGE}x Leverage* (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Position Size).\n"
                     "• Ready to scan all 6 markets fresh! 🚀",
                     chat_id
                 )

@@ -21,7 +21,7 @@ class TradeManager:
     Central Trade Manager for SPIDY CRYPTO.
     Enforces the single-active-trade global lock (MAX_ACTIVE_TRADES = 1),
     handles multi-coin setup arbitration across all 6 models,
-    tracks trade lifecycle state machine, position sizing (₹3,000 margin @ 6x leverage -> ₹18,000 position),
+    tracks trade lifecycle state machine, position sizing (₹4,200 margin @ 6x leverage -> ₹25,200 position),
     MFE/MAE excursions, and persists model-specific performance metrics to SQLite.
     """
 

@@ -13,14 +13,14 @@ class PositionSizeResult(BaseModel):
     risk_amount: float = 0.0
     risk_pct: float = 0.0
     leverage: int = 1
-    account_equity: float = 3000.0
+    account_equity: float = 4200.0
 
 
 class PositionSizer:
     """
     Computes position sizing, required margin, and enforces portfolio-level risk safeguards:
     - Account equity & Risk %
-    - ₹3,000 allocated margin @ 6x leverage (₹18,000 position size)
+    - ₹4,200 allocated margin @ 6x leverage (₹25,200 position size)
     - Leverage
     - Daily loss limit protection
     - Consecutive loss limit protection
@@ -76,9 +76,9 @@ class PositionSizer:
                 rejection_reason="Invalid stop distance (<= 0)"
             )
 
-        # Institutional Position Sizing: ₹3,000 Margin @ 6x Leverage -> ₹18,000 Notional Value
-        # All trade risk is evaluated relative to the ₹3,000 allocated margin
-        required_margin = min(margin_cap, 3000.0) if margin_cap else 3000.0
+        # Institutional Position Sizing: ₹4,200 Margin @ 6x Leverage -> ₹25,200 Notional Value
+        # All trade risk is evaluated relative to the ₹4,200 allocated margin
+        required_margin = min(margin_cap, 4200.0) if margin_cap else 4200.0
         notional = required_margin * lev
         usd_rate = getattr(settings, "USD_INR_RATE", 87.5)
         notional_usd = notional / usd_rate

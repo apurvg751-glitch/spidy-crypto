@@ -708,7 +708,7 @@ async def api_analysis(symbol: str):
             "target_1": round_price(sym, t1),
             "target_2": round_price(sym, t2),
             "rr": rr,
-            "margin": f"₹{int(settings.MAX_ALLOWED_MARGIN):,} ({settings.DEFAULT_LEVERAGE}x Lev / ₹18k Pos)" if is_active else f"Idle (₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x)"
+            "margin": f"₹{int(settings.MAX_ALLOWED_MARGIN):,} ({settings.DEFAULT_LEVERAGE}x Lev / ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE / 1000):.1f}k Pos)" if is_active else f"Idle (₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x)"
         },
         "progression_steps": steps,
         "reasons": [
@@ -921,7 +921,7 @@ async def api_monte_carlo(simulations: int = 500, trades: int = 100):
     """Executes Monte Carlo quantitative simulation on strategy performance."""
     from backtesting.monte_carlo import MonteCarloEngine
     result = MonteCarloEngine.run_simulation(
-        initial_capital=float(settings.MAX_ALLOWED_MARGIN or 3000.0),
+        initial_capital=float(settings.MAX_ALLOWED_MARGIN or 4200.0),
         win_rate=0.65,
         avg_win_r=1.8,
         avg_loss_r=1.0,

@@ -6,7 +6,7 @@ logger = logging.getLogger("spidy.copy_trader")
 
 
 class CopyClient:
-    def __init__(self, client_id: str, name: str, allocated_margin: float = 3000.0, is_active: bool = True):
+    def __init__(self, client_id: str, name: str, allocated_margin: float = 4200.0, is_active: bool = True):
         self.client_id = client_id
         self.name = name
         self.allocated_margin = allocated_margin
@@ -24,7 +24,7 @@ class CopyTraderEngine:
     def __init__(self):
         self.clients: Dict[str, CopyClient] = {}
 
-    def register_client(self, client_id: str, name: str, allocated_margin: float = 3000.0) -> CopyClient:
+    def register_client(self, client_id: str, name: str, allocated_margin: float = 4200.0) -> CopyClient:
         client = CopyClient(client_id=client_id, name=name, allocated_margin=allocated_margin)
         self.clients[client_id] = client
         logger.info(f"Registered VIP copy client '{name}' (ID: {client_id}, Margin: ₹{allocated_margin:,.2f})")
@@ -41,7 +41,7 @@ class CopyTraderEngine:
         Calculates proportional order sizes and dispatches execution tasks to all active clients concurrently.
         """
         results = []
-        master_margin = float(master_trade.get("margin_used", 3000.0))
+        master_margin = float(master_trade.get("margin_used", 4200.0))
 
         active_clients = [c for c in self.clients.values() if c.is_active]
 

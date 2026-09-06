@@ -162,7 +162,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = formatPrice(sym, activeTrade.stop_loss);
         document.getElementById("val-t1").textContent = formatPrice(sym, activeTrade.target_1);
         document.getElementById("val-t2").textContent = formatPrice(sym, activeTrade.target_2);
-        document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 3000).toLocaleString('en-IN')} (6x Leverage)`;
+        document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 4200).toLocaleString('en-IN')} (6x Leverage)`;
 
         const dirBadge = document.getElementById("trade-direction-badge");
         if (dirBadge) {
@@ -1113,7 +1113,7 @@ function renderActiveTradeWarRoom(at) {
     const sl = Number(at.stop_loss || 0);
     const t1 = Number(at.target_1 || 0);
     const t2 = Number(at.target_2 || 0);
-    const margin = Number(at.margin_used || 3000);
+    const margin = Number(at.margin_used || 4200);
     const lev = Number(at.leverage || 6);
 
     // Header badge group

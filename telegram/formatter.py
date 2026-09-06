@@ -1,5 +1,6 @@
 from typing import Any, Optional
 from config.precision import format_price, get_symbol_precision
+from config.settings import settings
 
 
 def format_coin_price(coin: str, price: float) -> str:
@@ -74,7 +75,7 @@ def format_main_alert(setup: dict[str, Any]) -> str:
         f"RR: 1:{rr:.1f}\n\n"
         f"Delta Specs: {setup.get('delta_contracts', 0)} Lots ({setup.get('contract_unit', '')}/lot)\n"
         f"Point Value: {setup.get('point_label', '$1.00')} pt = ±₹{setup.get('point_val_inr', 0):.2f} (±${setup.get('point_val_usd', 0):.4f})\n"
-        f"Position Sizing: ₹18,000 Notional (₹3,000 Margin @ 6x)\n\n"
+        f"Position Sizing: ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Notional (₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x)\n\n"
         f"Status: {status}\n\n"
         f"Other markets remain monitored but new trades are globally blocked while this trade is active.\n"
         f"Only ONE SPIDY CRYPTO trade can be active at one time."
