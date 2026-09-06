@@ -872,19 +872,20 @@ async def api_close_active_trade():
     trade_manager.active_trade = None
     trade_manager.global_status = "WATCHING"
 
-    # Send Telegram Notification to Apurv
-    try:
-        msg = (
-            "🛑 *ALL TRADES CANCELLED*\n\n"
-            f"• Action: All active and waiting trades cancelled\n"
-            f"• Affected Coin: *{closed_coin or 'None'}*\n"
-            f"• Global Slot: *OPEN (0/1)*\n"
-            f"• Bot Status: *WATCHING*\n\n"
-            "Bot is actively monitoring ETH, BTC, and SOL for new institutional setups."
-        )
-        await telegram.send_message(msg)
-    except Exception as e:
-        logger.warning(f"Telegram notice error: {e}")
+    # Send Telegram Notification only if a trade was actively running
+    if closed_coin:
+        try:
+            msg = (
+                "🛑 *ACTIVE TRADE MANUALLY CANCELLED*\n\n"
+                f"• Action: Active trade closed via admin command\n"
+                f"• Affected Coin: *{closed_coin}*\n"
+                f"• Global Slot: *OPEN (0/1)*\n"
+                f"• Bot Status: *WATCHING*\n\n"
+                f"Bot is actively monitoring {', '.join(settings.SYMBOLS)} for institutional setups."
+            )
+            await telegram.send_message(msg)
+        except Exception as e:
+            logger.warning(f"Telegram notice error: {e}")
 
     await broadcast_full_status()
 

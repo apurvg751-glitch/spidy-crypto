@@ -87,3 +87,13 @@ def make_candle(
         is_closed=is_closed
     )
 
+
+@pytest.fixture(autouse=True)
+def disable_real_telegram_in_tests(monkeypatch):
+    """Guarantees automated test runs NEVER dispatch messages to the user's live Telegram bot."""
+    async def mock_send(*args, **kwargs):
+        return True
+    monkeypatch.setattr(TelegramNotifier, "send_message", mock_send)
+    monkeypatch.setattr(TelegramNotifier, "send_trade_detected_alert", mock_send)
+    monkeypatch.setattr(TelegramNotifier, "send_trade_lifecycle_update", mock_send)
+
