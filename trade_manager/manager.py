@@ -378,31 +378,34 @@ class TradeManager:
             return active_record
 
     async def _submit_live_order(self, setup: Any, pv: Any):
-        """Dispatches live limit entry order and bracket protection to Delta Exchange India."""
+        """Dispatches live hybrid market entry order and bracket protection to Delta Exchange India."""
         try:
             side = "buy" if setup.direction.upper() == "LONG" else "sell"
-            size = max(1, int(getattr(pv, "delta_contracts", 1)))
-            logger.info(f"🚀 [DELTA LIVE] Placing {setup.coin} {side.upper()} order: size={size}, limit={setup.entry}")
+            raw_contracts = getattr(pv, "delta_contracts", 1)
+            size = max(1, int(round(raw_contracts)))
+            logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} MARKET entry: size={size} contracts")
             res = await self.delta_execution.place_order(
                 symbol=setup.coin,
                 side=side,
-                order_type="limit_order",
-                size=size,
-                limit_price=setup.entry
+                order_type="market_order",
+                size=size
             )
             if res.get("success"):
-                order_id = res.get("order", {}).get("id")
-                logger.info(f"✅ [DELTA LIVE] Order submitted successfully to Delta India. Order ID: {order_id}")
-                # Submit bracket protection (SL & TP)
+                order_data = res.get("order", {})
+                order_id = order_data.get("id")
+                fill_price = float(order_data.get("average_fill_price") or order_data.get("limit_price") or setup.entry)
+                logger.info(f"✅ [DELTA LIVE HYBRID] Market entry filled on Delta India. Order ID: {order_id}, Fill: {fill_price}")
+                # Immediately attach initial bracket protection (Stop Loss & Target 1)
                 await self.delta_execution.place_bracket_order(
                     symbol=setup.coin,
                     stop_loss_price=setup.stop_loss,
                     take_profit_price=setup.target_1
                 )
+                logger.info(f"🛡️ [DELTA LIVE HYBRID] Initial bracket protection attached: SL={setup.stop_loss}, TP1={setup.target_1}")
             else:
-                logger.error(f"❌ [DELTA LIVE] Order placement failed on Delta India: {res.get('error')}")
+                logger.error(f"❌ [DELTA LIVE HYBRID] Market order failed on Delta India: {res.get('error')}")
         except Exception as e:
-            logger.error(f"❌ [DELTA LIVE] Exception submitting live order: {e}")
+            logger.error(f"❌ [DELTA LIVE HYBRID] Exception submitting live order: {e}")
 
     async def update_price(self, symbol: str, current_price: float):
         """Monitors incoming price ticks, updates MFE/MAE excursions, and drives state transitions."""
@@ -464,6 +467,13 @@ class TradeManager:
                 # 1. Dynamic Breakeven & Trailing Stop Engine
                 peak_fav = self.active_trade.get("peak_favorable_price", current_price)
                 atr = self.active_trade.get("atr", entry * 0.005)
+
+                candles_5m = None
+                if getattr(self, "feed_manager", None):
+                    m_state = self.feed_manager.get_market_state(symbol)
+                    if m_state and m_state.candles_5m:
+                        candles_5m = m_state.candles_5m
+
                 trail_res = TrailingStopEngine.evaluate_trail(
                     direction=direction,
                     entry=entry,
@@ -472,6 +482,7 @@ class TradeManager:
                     current_price=current_price,
                     peak_favorable_price=peak_fav,
                     atr=atr,
+                    candles_5m=candles_5m,
                     symbol=symbol
                 )
                 if trail_res.stop_moved:
@@ -480,6 +491,16 @@ class TradeManager:
                     self.active_trade["be_moved"] = True
                     self.db.set_active_trade(self.active_trade)
                     logger.info(f"Trailing Stop ratcheted for {symbol}: {format_price(symbol, old_sl)} -> {format_price(symbol, trail_res.new_stop)} [{trail_res.trail_reason}]")
+
+                    # Live Delta Exchange Bracket Order Update
+                    if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+                        runner_tp = self.active_trade.get("target_2") if self.active_trade.get("partial_closed") else self.active_trade.get("target_1")
+                        asyncio.create_task(self.delta_execution.place_bracket_order(
+                            symbol=symbol,
+                            stop_loss_price=trail_res.new_stop,
+                            take_profit_price=runner_tp
+                        ))
+
                     await self.telegram.send_trade_lifecycle_update(
                         symbol, direction, "TRAILING_STOP", current_price, setup_id,
                         details=f"Trailing Stop ratcheted: {format_price(symbol, old_sl)} -> {format_price(symbol, trail_res.new_stop)} ({trail_res.trail_reason})"
@@ -553,38 +574,34 @@ class TradeManager:
                     await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)")
                     return
 
-                # 4. Target 1 Hit (B+ exits immediately, A+ locks Breakeven)
+                # 4. Target 1 Hit (Bank 40% Profit, 60% Runner Safe)
                 elif direction == "LONG" and current_price >= t1 and not self.active_trade.get("t1_hit"):
                     self.active_trade["t1_hit"] = True
-                    if self.active_trade.get("grade") == "B+":
-                        await self._close_trade("COMPLETED", current_price, f"Target 1 hit at {format_price(symbol, current_price)} (B+ Strict TP Secured)")
-                        return
-                    else:
-                        if self.active_trade["stop_loss"] < entry:
-                            self.active_trade["stop_loss"] = entry
-                            self.active_trade["be_moved"] = True
-                            self.db.set_active_trade(self.active_trade)
-                            await self.telegram.send_trade_lifecycle_update(
-                                symbol, direction, "TARGET HIT", current_price, setup_id,
-                                details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
-                            )
-                            self._notify_state_change()
+                    if not self.active_trade.get("partial_closed"):
+                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=1.0)
+                    elif self.active_trade["stop_loss"] < entry:
+                        self.active_trade["stop_loss"] = entry
+                        self.active_trade["be_moved"] = True
+                        self.db.set_active_trade(self.active_trade)
+                        await self.telegram.send_trade_lifecycle_update(
+                            symbol, direction, "TARGET HIT", current_price, setup_id,
+                            details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
+                        )
+                        self._notify_state_change()
 
                 elif direction == "SHORT" and current_price <= t1 and not self.active_trade.get("t1_hit"):
                     self.active_trade["t1_hit"] = True
-                    if self.active_trade.get("grade") == "B+":
-                        await self._close_trade("COMPLETED", current_price, f"Target 1 hit at {format_price(symbol, current_price)} (B+ Strict TP Secured)")
-                        return
-                    else:
-                        if self.active_trade["stop_loss"] > entry:
-                            self.active_trade["stop_loss"] = entry
-                            self.active_trade["be_moved"] = True
-                            self.db.set_active_trade(self.active_trade)
-                            await self.telegram.send_trade_lifecycle_update(
-                                symbol, direction, "TARGET HIT", current_price, setup_id,
-                                details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
-                            )
-                            self._notify_state_change()
+                    if not self.active_trade.get("partial_closed"):
+                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=1.0)
+                    elif self.active_trade["stop_loss"] > entry:
+                        self.active_trade["stop_loss"] = entry
+                        self.active_trade["be_moved"] = True
+                        self.db.set_active_trade(self.active_trade)
+                        await self.telegram.send_trade_lifecycle_update(
+                            symbol, direction, "TARGET HIT", current_price, setup_id,
+                            details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
+                        )
+                        self._notify_state_change()
 
     async def _transition_to(self, new_status: str, price: float, details: str):
         if not self.active_trade:
@@ -881,6 +898,38 @@ class TradeManager:
                 self.active_trade["be_moved"] = True
 
         self.db.set_active_trade(self.active_trade)
+
+        # 3. Live Delta Partial Execution & Bracket Update (40% Bank & 60% Runner)
+        if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+            try:
+                total_contracts = max(1, int(round(self.active_trade.get("delta_contracts") or 1)))
+                closed_contracts = int(round(total_contracts * pct))
+                if closed_contracts == 0 and total_contracts > 1:
+                    closed_contracts = 1
+
+                exit_side = "sell" if direction.upper() == "LONG" else "buy"
+                if closed_contracts > 0 and total_contracts > 1:
+                    remaining_contracts = total_contracts - closed_contracts
+                    self.active_trade["delta_contracts"] = remaining_contracts
+                    logger.info(f"🚀 [DELTA LIVE] Banking 40% partial: closing {closed_contracts} contracts of {coin} (remaining runner: {remaining_contracts})")
+                    asyncio.create_task(self.delta_execution.place_order(
+                        symbol=coin,
+                        side=exit_side,
+                        order_type="market_order",
+                        size=closed_contracts,
+                        reduce_only=True
+                    ))
+
+                runner_tp = self.active_trade.get("target_2")
+                logger.info(f"🛡️ [DELTA LIVE] Advancing bracket to Breakeven SL ({self.active_trade['stop_loss']}) & Runner TP2 ({runner_tp})")
+                asyncio.create_task(self.delta_execution.place_bracket_order(
+                    symbol=coin,
+                    stop_loss_price=self.active_trade["stop_loss"],
+                    take_profit_price=runner_tp
+                ))
+            except Exception as e:
+                logger.error(f"❌ [DELTA LIVE] Error executing live partial on Delta India: {e}")
+
         logger.info(
             f"Partial Profit Executed for {coin}: {int(pct*100)}% secured at {format_price(coin, current_p)} "
             f"(+{achieved_r:.2f}R | +₹{realized_pnl_inr:,.2f}). Remaining margin: ₹{remaining_margin:,.2f}"
