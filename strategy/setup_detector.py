@@ -395,10 +395,32 @@ class SetupDetector:
                     candles_4h=market.candles_4h or []
                 )
 
-                # HARD REJECTION GATE: TP1 MUST provide at least 1.6R clearance
+                # Dynamic SL Adjustment & Target Clearance:
+                # If TP1 clearance is slightly below 1.6R due to a lower swing high/low,
+                # adaptively refine the SL buffer to the physical structural pivot (down to 0.60 ATR floor)
+                # so the trade becomes applicable with flexible risk rather than being discarded!
                 if not snapped.has_minimum_clearance or snapped.rr_1 < 1.6:
-                    logger.info(f"Setup {cand.id} REJECTED: TP1 ({snapped.target_1}) too close to entry ({cand.entry}) | RR1: {snapped.rr_1:.2f} < 1.6R")
-                    continue
+                    adaptive_min_risk = max(cand_atr * 0.60, cand.entry * 0.0035)
+                    adaptive_sl = round_price(cand.coin, (cand.entry - adaptive_min_risk) if cand.direction == "LONG" else (cand.entry + adaptive_min_risk))
+                    adaptive_snapped = TargetSnapper.snap_targets(
+                        direction=cand.direction,
+                        entry=cand.entry,
+                        stop_loss=adaptive_sl,
+                        candles_15m=closed_15m,
+                        dealing_range=dr,
+                        atr=cand_atr,
+                        min_rr=1.6,
+                        symbol=cand.coin,
+                        candles_1h=market.candles_1h or [],
+                        candles_4h=market.candles_4h or []
+                    )
+                    if adaptive_snapped.has_minimum_clearance and adaptive_snapped.rr_1 >= 1.6:
+                        cand.stop_loss = adaptive_sl
+                        snapped = adaptive_snapped
+                        cand.reasons.append(f"Dynamic SL Adjustment: Refined stop buffer to {adaptive_sl} for lower swing structure (1:{snapped.rr_1}R)")
+                    else:
+                        logger.info(f"Setup {cand.id} REJECTED: TP1 ({snapped.target_1}) too close to entry ({cand.entry}) | RR1: {snapped.rr_1:.2f} < 1.6R")
+                        continue
 
                 # RE-ENTRY & COOLDOWN GATE: Enforce fresh structure and prevent price chasing
                 reentry_mgr = ReentryManager()

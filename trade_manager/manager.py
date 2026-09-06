@@ -58,7 +58,7 @@ class TradeManager:
     def check_daily_loss_reset(self) -> bool:
         """
         Checks if an IST calendar day has rolled over at 11:59 PM IST (23:59 IST).
-        If the date has changed, resets current_daily_loss to 0.0 and refreshes the ₹420.00 budget.
+        If the date has changed, resets current_daily_loss to 0.0 and refreshes the ₹195.00 budget.
         Returns True if a reset was triggered.
         """
         from datetime import datetime
@@ -261,7 +261,9 @@ class TradeManager:
                 current_daily_loss=self.current_daily_loss,
                 consecutive_losses=self.consecutive_losses,
                 last_trade_close_time=self.last_trade_close_time,
-                cooldown_seconds=self.cooldown_seconds
+                cooldown_seconds=self.cooldown_seconds,
+                target_rr=getattr(winner, "rr", None),
+                grade=getattr(winner, "grade", None)
             )
 
             if not pos_calc.is_allowed:
@@ -720,7 +722,7 @@ class TradeManager:
             for s in settings.SYMBOLS:
                 reentry_status[s] = self.reentry_manager.get_market_status(s)
 
-        max_dl = getattr(settings, "MAX_DAILY_LOSS", 420.0)
+        max_dl = getattr(settings, "MAX_DAILY_LOSS", 195.0)
         daily_loss_rem = max(0.0, max_dl - self.current_daily_loss)
 
         return {

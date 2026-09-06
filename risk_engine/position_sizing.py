@@ -40,7 +40,9 @@ class PositionSizer:
         last_trade_close_time: int = 0,
         cooldown_seconds: Optional[int] = None,
         max_daily_loss: Optional[float] = None,
-        max_consecutive_losses: Optional[int] = None
+        max_consecutive_losses: Optional[int] = None,
+        target_rr: Optional[float] = None,
+        grade: Optional[str] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
@@ -80,9 +82,19 @@ class PositionSizer:
                 rejection_reason="Invalid stop distance (<= 0)"
             )
 
-        # Institutional Position Sizing: ₹4,200 Margin @ 6x Leverage -> ₹25,200 Notional Value
-        # All trade risk is evaluated relative to the ₹4,200 allocated margin
-        required_margin = min(margin_cap, 4200.0) if margin_cap else 4200.0
+        # Institutional Position Sizing: Base ₹4,200 Margin @ 6x Leverage -> ₹25,200 Notional Value
+        # Dynamic Variable Margin Adjustment:
+        # If a setup has a slightly lower swing high (1.6R <= RR < 2.0R),
+        # dynamically scale margin (e.g. 70% to 90%) to reduce risk exposure on tighter clearance.
+        base_margin = min(margin_cap, 4200.0) if margin_cap else 4200.0
+        margin_multiplier = 1.0
+        if target_rr is not None and target_rr < 2.0:
+            # Scale proportionally: 1.8R gives (1.8/2.0) = 0.90x, clamped to min 0.70x (70% margin)
+            margin_multiplier = max(0.70, min(1.0, target_rr / 2.0))
+        elif grade and grade.upper() == "B+":
+            margin_multiplier = 0.75
+
+        required_margin = round(base_margin * margin_multiplier, 2)
         notional = required_margin * lev
         usd_rate = getattr(settings, "USD_INR_RATE", 87.5)
         notional_usd = notional / usd_rate
