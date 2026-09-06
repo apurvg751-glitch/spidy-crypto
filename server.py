@@ -559,7 +559,9 @@ async def api_analysis(symbol: str):
         current_price=price,
         candles_15m=c15,
         atr=atr,
-        dealing_range=dr
+        dealing_range=dr,
+        candles_1h=m.candles_1h or [],
+        candles_4h=m.candles_4h or []
     )
 
     grade_res = SetupGradingEngine.grade_setup(
@@ -662,7 +664,9 @@ async def api_analysis(symbol: str):
             candles_15m=c15,
             dealing_range=dr,
             min_rr=1.6,
-            symbol=sym
+            symbol=sym,
+            candles_1h=m.candles_1h or [],
+            candles_4h=m.candles_4h or []
         )
         entry = snapped.entry
         stop = snapped.stop_loss

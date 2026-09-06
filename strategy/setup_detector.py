@@ -336,7 +336,9 @@ class SetupDetector:
                     current_price=cand.entry,
                     candles_15m=closed_15m,
                     atr=cand.score_breakdown.atr_value if hasattr(cand.score_breakdown, "atr_value") else (cand.entry * 0.005),
-                    dealing_range=dr
+                    dealing_range=dr,
+                    candles_1h=market.candles_1h or [],
+                    candles_4h=market.candles_4h or []
                 )
 
                 # HARD REJECTION GATE 1: Barrier in path (No room to run before hitting ceiling/floor)
@@ -388,7 +390,9 @@ class SetupDetector:
                     dealing_range=dr,
                     atr=cand_atr,
                     min_rr=1.6,
-                    symbol=cand.coin
+                    symbol=cand.coin,
+                    candles_1h=market.candles_1h or [],
+                    candles_4h=market.candles_4h or []
                 )
 
                 # HARD REJECTION GATE: TP1 MUST provide at least 1.6R clearance
