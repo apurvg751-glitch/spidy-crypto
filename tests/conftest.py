@@ -90,10 +90,21 @@ def make_candle(
 
 @pytest.fixture(autouse=True)
 def disable_real_telegram_in_tests(monkeypatch):
-    """Guarantees automated test runs NEVER dispatch messages to the user's live Telegram bot."""
-    async def mock_send(*args, **kwargs):
-        return True
-    monkeypatch.setattr(TelegramNotifier, "send_message", mock_send)
-    monkeypatch.setattr(TelegramNotifier, "send_trade_detected_alert", mock_send)
-    monkeypatch.setattr(TelegramNotifier, "send_trade_lifecycle_update", mock_send)
+    """Guarantees automated test runs NEVER hit real Telegram API over the network."""
+    from unittest.mock import MagicMock
+    import httpx
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"ok": True, "result": {"message_id": 12345}}
+    mock_resp.text = '{"ok": true}'
+
+    orig_post = httpx.AsyncClient.post
+
+    async def mock_async_post(self, url, *args, **kwargs):
+        if "api.telegram.org" in str(url):
+            return mock_resp
+        return await orig_post(self, url, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_async_post)
 

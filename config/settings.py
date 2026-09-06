@@ -21,8 +21,8 @@ class Settings(BaseModel):
     DELTA_WS_URL: str = os.getenv("DELTA_WS_URL", "wss://public-socket.india.delta.exchange")
     DELTA_WS_FALLBACK_URL: str = os.getenv("DELTA_WS_FALLBACK_URL", "wss://socket.india.delta.exchange")
 
-    # Markets (Curated High-Probability Institutional Trio - BTC is anchor only)
-    SYMBOLS: list[str] = ["XRPUSD", "ETHUSD", "AVAXUSD"]
+    # Markets (Curated High-Probability Institutional Fab 4 - BTC is anchor only)
+    SYMBOLS: list[str] = ["XRPUSD", "ETHUSD", "SOLUSD", "AVAXUSD"]
     ALL_SYMBOLS: list[str] = ["BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "BNBUSD", "AVAXUSD"]
 
     # Stagnation & Premature Breakeven Guards (Disabled to prevent suffocating trades)
