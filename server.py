@@ -320,6 +320,18 @@ async def api_status():
     return get_system_status()
 
 
+@app.get("/api/cloud_ip")
+async def get_cloud_ip():
+    """Returns the public outbound IP of this running server (useful for Delta API IP whitelisting)."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get("https://api.ipify.org?format=json")
+            return res.json()
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/api/performance")
 async def api_performance():
     """Returns official verified institutional track record and performance metrics."""
