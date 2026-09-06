@@ -72,6 +72,9 @@ class Settings(BaseModel):
     # Global One-Trade Rule
     MAX_ACTIVE_TRADES: int = 1
 
+    # Strategy Model Filtering (Quarantine underperforming models)
+    DISABLED_MODELS: list[str] = ["MODEL_8", "MODEL_9"]
+
     # Data Reliability
     STALE_DATA_THRESHOLD_SECONDS: int = 900  # 15 mins for 5m candle
     MAX_STORED_CANDLES: int = 300

@@ -284,15 +284,17 @@ class SetupDetector:
         )
 
         models = [
-            Model1SweepReversal(),
-            Model2BosContinuation(),
-            Model3ObFvg(),
-            Model4ChochReversal(),
-            Model5BreakoutRetest(),
-            Model6TrendPullback(),
-            Model8ObFvgPullback(),
-            Model9LiquiditySweepReversal(),
-            Model10InstitutionalSniper()
+            m for m in [
+                Model1SweepReversal(),
+                Model2BosContinuation(),
+                Model3ObFvg(),
+                Model4ChochReversal(),
+                Model5BreakoutRetest(),
+                Model6TrendPullback(),
+                Model8ObFvgPullback(),
+                Model9LiquiditySweepReversal(),
+                Model10InstitutionalSniper()
+            ] if m.model_id not in getattr(settings, "DISABLED_MODELS", [])
         ]
 
         from config.precision import round_price
@@ -337,6 +339,21 @@ class SetupDetector:
                     dealing_range=dr
                 )
 
+                # HARD REJECTION GATE 1: Barrier in path (No room to run before hitting ceiling/floor)
+                if not barrier_res.has_room:
+                    logger.info(f"Setup {cand.id} ({cand.coin}) HARD REJECTED by Barrier Engine: {barrier_res.reason}")
+                    continue
+
+                # HARD REJECTION GATE 2: Dealing Range Premium/Discount Guard
+                # Never take a LONG in Deep Premium (> 55%) or SHORT in Deep Discount (< 45%)
+                if dr:
+                    if cand.direction == "LONG" and dr.current_position_pct > 0.55:
+                        logger.info(f"Setup {cand.id} ({cand.coin}) HARD REJECTED: LONG in Premium ({dr.current_position_pct*100:.1f}% > 55%)")
+                        continue
+                    if cand.direction == "SHORT" and dr.current_position_pct < 0.45:
+                        logger.info(f"Setup {cand.id} ({cand.coin}) HARD REJECTED: SHORT in Discount ({dr.current_position_pct*100:.1f}% < 45%)")
+                        continue
+
                 # Grade Setup: A+ vs B+
                 grade_res = SetupGradingEngine.grade_setup(
                     direction=cand.direction,
@@ -356,8 +373,8 @@ class SetupDetector:
 
                 cand_atr = cand.score_breakdown.atr_value if hasattr(cand.score_breakdown, "atr_value") else (cand.entry * 0.005)
 
-                # Ensure minimum stop loss distance floor (prevent paper-thin stops)
-                min_risk = max(cand_atr * 0.60, cand.entry * 0.0035)
+                # Ensure minimum stop loss distance floor (prevent paper-thin stops on 5M spread noise)
+                min_risk = max(cand_atr * 0.85, cand.entry * 0.0050)
                 current_risk = abs(cand.entry - cand.stop_loss)
                 if current_risk < min_risk:
                     cand.stop_loss = round_price(cand.coin, (cand.entry - min_risk) if cand.direction == "LONG" else (cand.entry + min_risk))
