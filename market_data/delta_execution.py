@@ -197,16 +197,27 @@ class DeltaExecutionClient:
             return {"success": False, "error": str(e)}
 
     async def cancel_all_orders(self, symbol: Optional[str] = None) -> Dict[str, Any]:
-        """Cancels all open orders (optionally for a specific symbol)."""
-        path = "/v2/orders/all"
-        payload: Dict[str, Any] = {}
-        if symbol:
-            payload["product_id"] = self.get_product_id(symbol)
-        body = json.dumps(payload) if payload else ""
-        headers = self._get_headers("DELETE", path, body=body)
+        """Cancels all open orders (optionally for a specific symbol) by querying open orders and cancelling each."""
         try:
-            res = await self.client.request("DELETE", f"{self.base_url}{path}", data=body, headers=headers)
-            return res.json()
+            target_pid = self.get_product_id(symbol) if symbol else None
+            path = "/v2/orders"
+            headers = self._get_headers("GET", path, query="?state=open")
+            res = await self.client.get(f"{self.base_url}{path}?state=open", headers=headers)
+            if res.status_code != 200:
+                return {"success": False, "error": res.text}
+            
+            data = res.json()
+            orders = data.get("result", [])
+            cancelled_count = 0
+            for o in orders:
+                pid = o.get("product_id")
+                oid = o.get("id")
+                if target_pid is None or pid == target_pid:
+                    if oid and pid:
+                        await self.cancel_order(order_id=oid, product_id=pid)
+                        cancelled_count += 1
+            logger.info(f"Cancelled {cancelled_count} open orders on Delta India (symbol={symbol})")
+            return {"success": True, "cancelled_count": cancelled_count}
         except Exception as e:
             logger.error(f"Delta cancel all orders error: {e}")
             return {"success": False, "error": str(e)}
