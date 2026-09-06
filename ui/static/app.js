@@ -174,7 +174,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹3,000 Margin @ 6x)";
+        document.getElementById("val-margin").textContent = "Idle (₹4,200 Margin @ 6x)";
 
         const m = marketStates[sym];
         const dirBadge = document.getElementById("trade-direction-badge");
@@ -563,13 +563,13 @@ function renderTacticalPanel(data) {
         document.getElementById("val-stop").textContent = formatPrice(sym, data.levels.stop_loss);
         document.getElementById("val-t1").textContent = formatPrice(sym, data.levels.target_1);
         document.getElementById("val-t2").textContent = formatPrice(sym, data.levels.target_2);
-        document.getElementById("val-margin").textContent = data.levels.margin || "₹3,000 Margin (6x Lev)";
+        document.getElementById("val-margin").textContent = data.levels.margin || "₹4,200 Margin (6x Lev)";
     } else {
         document.getElementById("val-entry").textContent = "--";
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹3,000 Margin @ 6x)";
+        document.getElementById("val-margin").textContent = "Idle (₹4,200 Margin @ 6x)";
     }
 
     // Delta Exchange India Point Value Telemetry
