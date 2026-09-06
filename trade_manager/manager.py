@@ -507,11 +507,11 @@ class TradeManager:
                     )
                     self._notify_state_change()
 
-                # 2. Automated +1.0R Milestone Rule: Lock 40% Profit, 60% Runner Safe
+                # 2. Automated +1.0R Milestone Rule: Lock 50% Profit, 50% Runner Safe
                 if risk > 0 and not self.active_trade.get("partial_closed"):
                     current_r = ((current_price - entry) / risk) if direction == "LONG" else ((entry - current_price) / risk)
                     if current_r >= 1.0:
-                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=current_r)
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=current_r)
 
                 # 2b. Institutional Velocity & Stagnation Stop Engine (Guarded by ENABLE_TIME_BASED_STAGNATION)
                 # By default FALSE: prevents premature 60m breakeven moves and 90m scratch exits that suffocate trades.
@@ -574,11 +574,11 @@ class TradeManager:
                     await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)")
                     return
 
-                # 4. Target 1 Hit (Bank 40% Profit, 60% Runner Safe)
+                # 4. Target 1 Hit (Bank 50% Profit, 50% Runner Safe)
                 elif direction == "LONG" and current_price >= t1 and not self.active_trade.get("t1_hit"):
                     self.active_trade["t1_hit"] = True
                     if not self.active_trade.get("partial_closed"):
-                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=1.0)
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0)
                     elif self.active_trade["stop_loss"] < entry:
                         self.active_trade["stop_loss"] = entry
                         self.active_trade["be_moved"] = True
@@ -592,7 +592,7 @@ class TradeManager:
                 elif direction == "SHORT" and current_price <= t1 and not self.active_trade.get("t1_hit"):
                     self.active_trade["t1_hit"] = True
                     if not self.active_trade.get("partial_closed"):
-                        await self._execute_partial(pct=0.40, current_price=current_price, achieved_r=1.0)
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0)
                     elif self.active_trade["stop_loss"] > entry:
                         self.active_trade["stop_loss"] = entry
                         self.active_trade["be_moved"] = True
@@ -842,13 +842,13 @@ class TradeManager:
 
     async def _execute_partial(
         self,
-        pct: float = 0.40,
+        pct: float = 0.50,
         current_price: Optional[float] = None,
         achieved_r: Optional[float] = None
     ) -> tuple[bool, str]:
         """
         Internal partial execution method (called by automated +1.0R milestone or manual trigger).
-        Banks specified percentage (e.g. 40%) in realized profit, reduces margin to remaining runner (60%),
+        Banks specified percentage (e.g. 50%) in realized profit, reduces margin to remaining runner (50%),
         ensures Stop Loss is locked at Breakeven + fee buffer (+0.05R), and notifies via Telegram.
         """
         if not self.active_trade:
@@ -899,7 +899,7 @@ class TradeManager:
 
         self.db.set_active_trade(self.active_trade)
 
-        # 3. Live Delta Partial Execution & Bracket Update (40% Bank & 60% Runner)
+        # 3. Live Delta Partial Execution & Bracket Update (50% Bank & 50% Runner)
         if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
             try:
                 total_contracts = max(1, int(round(self.active_trade.get("delta_contracts") or 1)))
@@ -911,7 +911,7 @@ class TradeManager:
                 if closed_contracts > 0 and total_contracts > 1:
                     remaining_contracts = total_contracts - closed_contracts
                     self.active_trade["delta_contracts"] = remaining_contracts
-                    logger.info(f"🚀 [DELTA LIVE] Banking 40% partial: closing {closed_contracts} contracts of {coin} (remaining runner: {remaining_contracts})")
+                    logger.info(f"🚀 [DELTA LIVE] Banking 50% partial: closing {closed_contracts} contracts of {coin} (remaining runner: {remaining_contracts})")
                     asyncio.create_task(self.delta_execution.place_order(
                         symbol=coin,
                         side=exit_side,
@@ -954,8 +954,8 @@ class TradeManager:
         self._notify_state_change()
         return True, f"Secured {secured_pct}% partial profit on {coin} at {format_price(coin, current_p)}!"
 
-    async def close_partial(self, pct: float = 0.40) -> tuple[bool, str]:
-        """Manually closes a percentage (e.g. 40% or 50%) of the active position."""
+    async def close_partial(self, pct: float = 0.50) -> tuple[bool, str]:
+        """Manually closes a percentage (e.g. 50%) of the active position."""
         async with self._lock:
             return await self._execute_partial(pct=pct)
 

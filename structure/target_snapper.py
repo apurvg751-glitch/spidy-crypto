@@ -119,8 +119,12 @@ class TargetSnapper:
                 t1 = entry + max(risk * 1.8, min_t1_dist)
                 t1_type = "DYNAMIC_EXPANSION_1.8R"
 
-            # 2. Look for Dealing Range Extreme for T2
-            if dealing_range and dealing_range.range_high > t1 + (risk * 0.5):
+            # 2. Look for Next Structural Higher High (HH) or Dealing Range Extreme for T2
+            potential_t2 = [h for h in highs if h > t1 + (risk * 0.5)]
+            if potential_t2:
+                t2 = min(potential_t2)
+                t2_type = "STRUCTURAL_HIGHER_HIGH"
+            elif dealing_range and dealing_range.range_high > t1 + (risk * 0.5):
                 t2 = round_price(symbol, dealing_range.range_high * 0.998)
                 t2_type = "DEALING_RANGE_CEILING"
             else:
@@ -164,8 +168,12 @@ class TargetSnapper:
                 t1 = entry - max(risk * 1.8, min_t1_dist)
                 t1_type = "DYNAMIC_EXPANSION_1.8R"
 
-            # 2. Look for Dealing Range Extreme for T2
-            if dealing_range and dealing_range.range_low < t1 - (risk * 0.5):
+            # 2. Look for Next Structural Lower Low (LL) or Dealing Range Extreme for T2
+            potential_t2 = [l for l in lows if l < t1 - (risk * 0.5)]
+            if potential_t2:
+                t2 = max(potential_t2)
+                t2_type = "STRUCTURAL_LOWER_LOW"
+            elif dealing_range and dealing_range.range_low < t1 - (risk * 0.5):
                 t2 = round_price(symbol, dealing_range.range_low * 1.002)
                 t2_type = "DEALING_RANGE_FLOOR"
             else:

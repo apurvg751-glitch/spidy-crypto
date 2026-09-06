@@ -49,16 +49,16 @@ async def test_automated_1r_partial_secures_40_percent(temp_db):
     assert tm.active_trade["partial_closed"] is False
     assert tm.active_trade["margin_used"] == 3000.0
 
-    # 2. Price hits 110.0 (+1.0R exactly) -> Automated 40% partial MUST trigger!
+    # 2. Price hits 110.0 (+1.0R exactly) -> Automated 50% partial MUST trigger!
     await tm.update_price("AVAXUSD", 110.0)
     assert tm.active_trade["partial_closed"] is True
-    assert tm.active_trade["partial_pct"] == 0.40
-    # 60% of 3000 = 1800 remaining margin
-    assert tm.active_trade["margin_used"] == 1800.0
+    assert tm.active_trade["partial_pct"] == 0.50
+    # 50% of 3000 = 1500 remaining margin
+    assert tm.active_trade["margin_used"] == 1500.0
     # Stop Loss should be moved to at least Breakeven (>= 100.0)
     assert tm.active_trade["stop_loss"] >= 100.0
     assert tm.active_trade["be_moved"] is True
-    # Realized partial profit calculation: 1200 closed margin * 6x leverage * 10% move = ₹720
+    # Realized partial profit calculation: 1500 closed margin * 6x leverage * 10% move = ₹900
     assert tm.active_trade.get("realized_partial_pnl") is not None
     assert tm.active_trade["realized_partial_pnl"] > 0
     # Confirm Telegram alert was dispatched
@@ -68,7 +68,7 @@ async def test_automated_1r_partial_secures_40_percent(temp_db):
     tm.telegram.send_partial_profit_secured.reset_mock()
     await tm.update_price("AVAXUSD", 112.0)
     assert tm.telegram.send_partial_profit_secured.called is False
-    assert tm.active_trade["margin_used"] == 1800.0
+    assert tm.active_trade["margin_used"] == 1500.0
 
 
 @pytest.mark.asyncio
@@ -104,7 +104,7 @@ async def test_automated_1r_partial_short_trade(temp_db):
     # Price at 90.0 (+1.0R for SHORT)
     await tm.update_price("ETHUSD", 90.0)
     assert tm.active_trade["partial_closed"] is True
-    assert tm.active_trade["margin_used"] == 1800.0
+    assert tm.active_trade["margin_used"] == 1500.0
     assert tm.active_trade["stop_loss"] <= 100.0
     assert tm.active_trade["be_moved"] is True
     assert tm.active_trade["realized_partial_pnl"] > 0

@@ -128,20 +128,20 @@ async def test_live_partial_execution_on_delta(temp_db):
         "trade_status": "ACTIVE",
         "margin_used": 4200.0,
         "leverage": 6,
-        "delta_contracts": 3,
+        "delta_contracts": 2,
         "partial_closed": False
     }
 
-    # Execute 40% partial
-    ok, msg = await tm._execute_partial(pct=0.40, current_price=105.0, achieved_r=1.0)
+    # Execute 50% partial
+    ok, msg = await tm._execute_partial(pct=0.50, current_price=105.0, achieved_r=1.0)
     assert ok is True
     assert tm.active_trade["partial_closed"] is True
-    assert tm.active_trade["delta_contracts"] == 2  # 3 - 1 = 2 contracts remaining runner!
+    assert tm.active_trade["delta_contracts"] == 1  # 2 - 1 = 1 contract remaining runner!
 
     # Wait a tick for background task
     await asyncio.sleep(0.01)
 
-    # Verify market reduce-only order was placed to bank 40% contracts
+    # Verify market reduce-only order was placed to bank 50% contracts (1 contract)
     tm.delta_execution.place_order.assert_called_once_with(
         symbol="SOLUSD",
         side="sell",
