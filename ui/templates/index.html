@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#00e5ff">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#00f0ff">
     <link rel="manifest" href="/static/manifest.json">
     <title>SPIDY CRYPTO — Autonomous Trading Assistant</title>
-    <link rel="stylesheet" href="/static/style.css?v=3.8.0">
+    <link rel="stylesheet" href="/static/style.css?v=4.0.0">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -34,6 +34,10 @@
         <div class="pill" title="Telegram alerts sent to configured chat">
             <span style="color:var(--cyan-neon)">TG ALERTS:</span>
             <span id="tg-status-text" style="color:#fff;">ACTIVE</span>
+        </div>
+        <div class="pill" id="audio-pill" style="cursor:pointer; user-select:none;" title="Click to Toggle Audio Synthesizer Alerts">
+            <span id="audio-icon">🔊</span>
+            <span id="audio-status-text" style="color:var(--cyan-neon); font-weight:700;">AUDIO: ON</span>
         </div>
         <div class="pill" id="security-pill" style="cursor:pointer; user-select:none;" title="Click to Authenticate or Lock Admin PIN (1408)">
             <span id="security-lock-icon">🔒</span>
@@ -63,6 +67,40 @@
                 <div class="matrix-item"><span class="matrix-lbl">DELTA LOTS</span><span id="wt-delta-contracts" class="matrix-val amber">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">POINTS MOVED</span><span id="wt-points-moved" class="matrix-val emerald">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">MARGIN ALLOCATED</span><span id="wt-margin" class="matrix-val amber">₹4,200 (6x)</span></div>
+            </div>
+
+            <!-- Dynamic Trade Journey Track (Progress to TP) -->
+            <div class="trade-journey-container" id="wt-journey-container">
+                <div class="journey-header">
+                    <span class="journey-title">🎯 TARGET CONVERGENCE JOURNEY</span>
+                    <span class="journey-pct" id="wt-journey-pct">0.0% COMPLETED</span>
+                </div>
+                <div class="journey-track">
+                    <div class="journey-progress-bar" id="wt-journey-bar" style="width: 0%;"></div>
+                    <div class="journey-pointer" id="wt-journey-pointer" style="left: 0%;"></div>
+                </div>
+                <div class="journey-milestones">
+                    <div class="journey-step active" id="j-step-entry">
+                        <span class="j-step-dot"></span>
+                        <span class="j-step-title">ENTRY</span>
+                        <span class="j-step-price" id="j-val-entry">--</span>
+                    </div>
+                    <div class="journey-step" id="j-step-be">
+                        <span class="j-step-dot"></span>
+                        <span class="j-step-title">BREAKEVEN</span>
+                        <span class="j-step-price" id="j-val-be">ARMED</span>
+                    </div>
+                    <div class="journey-step" id="j-step-t1">
+                        <span class="j-step-dot"></span>
+                        <span class="j-step-title">TP1 (1.8R)</span>
+                        <span class="j-step-price" id="j-val-t1">--</span>
+                    </div>
+                    <div class="journey-step" id="j-step-t2">
+                        <span class="j-step-dot"></span>
+                        <span class="j-step-title">TP2 (2.5R)</span>
+                        <span class="j-step-price" id="j-val-t2">--</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -291,25 +329,39 @@
             </div>
 
             <!-- Live Candlestick & Technical Level Overlay -->
-            <div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <div style="display:flex; align-items:center; gap:12px;">
-                        <span id="chart-symbol-label" style="font-size:12px; font-family:var(--font-mono); color:var(--text-secondary);">
+            <div class="chart-wrapper">
+                <div class="chart-header-row">
+                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span id="chart-symbol-label" style="font-size:12px; font-family:var(--font-mono); color:var(--text-secondary); font-weight:700;">
                             ETHUSD • 5-MINUTE CHART
                         </span>
                         <!-- Timeframe Selector -->
-                        <div class="tf-selector" style="display:flex; gap:6px;">
+                        <div class="tf-selector">
                             <button class="tf-btn active" data-tf="5m">5M</button>
                             <button class="tf-btn" data-tf="15m">15M</button>
                             <button class="tf-btn" data-tf="1h">1H</button>
                             <button class="tf-btn" data-tf="4h">4H</button>
                         </div>
                     </div>
-                    <span style="font-size:11px; font-family:var(--font-mono); color:var(--text-muted);">
-                        Lines: <span style="color:#00f0ff;">Entry</span> | <span style="color:#f43f5e;">Stop</span> | <span style="color:#10b981;">T1</span> | <span style="color:#34d399;">T2</span>
-                    </span>
+                    <!-- Chart Legend with HTF Institutional White Line indicator -->
+                    <div class="chart-legend">
+                        <span class="legend-item"><span class="legend-dot white-pulse"></span> <strong>White Line</strong> (HTF Origin)</span>
+                        <span class="legend-item"><span class="legend-dot cyan"></span> Entry</span>
+                        <span class="legend-item"><span class="legend-dot rose"></span> Stop</span>
+                        <span class="legend-item"><span class="legend-dot emerald"></span> TP1</span>
+                        <span class="legend-item"><span class="legend-dot teal"></span> TP2</span>
+                        <span class="legend-item"><span class="legend-dot yellow"></span> EQ 50%</span>
+                    </div>
                 </div>
-                <canvas id="chart-canvas"></canvas>
+                
+                <div class="canvas-container" id="canvas-container">
+                    <canvas id="chart-canvas"></canvas>
+                    <div id="chart-tooltip" class="chart-tooltip" style="display:none;"></div>
+                </div>
+                <div class="chart-footer-note">
+                    <span>💡 Tap / Hover chart for precision crosshair & distance calculator</span>
+                    <span id="chart-live-mark-hud" style="color:var(--cyan-neon); font-weight:700;">LIVE MARK: ---</span>
+                </div>
             </div>
         </div>
 
@@ -319,7 +371,7 @@
 
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <button class="btn" id="btn-power-toggle" style="border-color:var(--rose-neon); color:var(--rose-neon); font-weight:800;">🛑 Power Off / Pause Spidy Bot</button>
-                <button class="btn" id="btn-scan">⚡ Trigger Market Scan (10 Models)</button>
+                <button class="btn" id="btn-scan">⚡ Trigger Market Scan (9 Models)</button>
                 <div id="scan-result-box" style="display:none; background:rgba(0,240,255,0.08); border:1px solid var(--cyan-neon); padding:8px 10px; border-radius:6px; font-size:11px; font-family:var(--font-mono);">
                     <div style="color:var(--cyan-neon); font-weight:700; margin-bottom:4px;">⚡ SCAN TELEMETRY:</div>
                     <div id="scan-result-content">Scanning markets...</div>
@@ -331,8 +383,6 @@
                     <span style="font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); white-space:nowrap;">Test Model:</span>
                     <select id="select-test-model" style="flex:1; background:rgba(0,0,0,0.6); color:var(--cyan-neon); border:1px solid rgba(0,240,255,0.4); padding:6px 8px; border-radius:4px; font-family:var(--font-mono); font-size:11px; outline:none; cursor:pointer;">
                         <option value="MODEL_10">Model 10: Institutional Sniper ⭐ (100% Confluence)</option>
-                        <option value="MODEL_9">Model 9: Liquidity Sweep Reversal ⭐</option>
-                        <option value="MODEL_8">Model 8: Order Block + FVG Pullback</option>
                         <option value="MODEL_1">Model 1: Sweep Reversal</option>
                         <option value="MODEL_2">Model 2: BOS Continuation</option>
                         <option value="MODEL_3">Model 3: OB + FVG Confluence</option>
@@ -343,10 +393,22 @@
                 </div>
 
                 <div style="display:flex; gap:8px;">
-                    <button class="btn" id="btn-sim-long" style="flex:1; border-color:var(--emerald-neon);">🧪 Test LONG (Selected Coin)</button>
-                    <button class="btn" id="btn-sim-short" style="flex:1; border-color:var(--rose-neon);">🧪 Test SHORT (Selected Coin)</button>
+                    <button class="btn" id="btn-sim-long" style="flex:1; border-color:var(--emerald-neon);">🧪 Test LONG</button>
+                    <button class="btn" id="btn-sim-short" style="flex:1; border-color:var(--rose-neon);">🧪 Test SHORT</button>
                 </div>
                 <button class="btn" id="btn-release-lock" style="border-color:var(--amber-neon); color:var(--amber-neon); margin-top:2px;">🛑 Command Trade Exit (Close Active Trade)</button>
+            </div>
+
+            <!-- Live Institutional Radar Stream -->
+            <div class="panel-title" style="margin-top:12px; display:flex; justify-content:space-between; align-items:center;">
+                <span>Institutional Radar Stream</span>
+                <span class="live-pulse-badge">LIVE TAPE</span>
+            </div>
+            <div class="radar-feed-box" id="radar-feed-container">
+                <div class="radar-event-card">
+                    <div class="rec-top"><span class="rec-sym">SYSTEM</span><span class="rec-time">NOW</span></div>
+                    <div class="rec-desc">Multi-Timeframe 1H/4H Institutional Radar active across 6 Delta India pairs.</div>
+                </div>
             </div>
 
             <!-- Backtest Summary Banner -->
@@ -379,7 +441,8 @@
                 <div><strong>LEVERAGE:</strong> <span style="color:var(--cyan-neon);">6x Leverage</span></div>
                 <div><strong>POSITION SIZE:</strong> <span style="color:var(--cyan-neon);">₹25,200 Notional Value</span></div>
                 <div><strong>MAX ACTIVE TRADES:</strong> <span style="color:var(--cyan-neon);">1</span></div>
-                <div><strong>RISK EVALUATION:</strong> <span style="color:var(--emerald-neon);">Evaluated on ₹4,200 Margin</span></div>
+                <div><strong>MAX DAILY LOSS:</strong> <span style="color:var(--rose-neon);">₹500.00 Limit (Active)</span></div>
+                <div><strong>RISK EVALUATION:</strong> <span style="color:var(--emerald-neon);">Evaluated on ₹4,200 Margin (1.5% / ₹63 1R)</span></div>
                 <div><strong>STOPPING DISCIPLINE:</strong> Exits on TP, SL, or Telegram Command</div>
                 <div><strong>MINIMUM RR:</strong> 1:1.6+ Institutional Clearance</div>
             </div>
@@ -416,13 +479,24 @@
             </table>
         </div>
     </div>
+</div>
+
+<!-- Mobile-First Sticky Bottom Action Dock (Thumb-Friendly on Smartphones) -->
+<div class="mobile-quick-dock" id="mobile-dock">
+    <button class="dock-btn be" id="dock-btn-be" title="Breakeven">🎯 BE</button>
+    <button class="dock-btn partial" id="dock-btn-partial" title="50% Partial">💰 50%</button>
+    <button class="dock-btn close" id="dock-btn-close" title="Emergency Close">🛑 Exit</button>
+    <button class="dock-btn scan" id="dock-btn-scan" title="Instant Scan">⚡ Scan</button>
+    <button class="dock-btn pin" id="dock-btn-pin" title="Admin PIN">🔐 PIN</button>
+</div>
+
 <!-- Admin PIN Auth Modal -->
-<div id="pin-modal" style="display:none; position:fixed; z-index:99999; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
-    <div style="background:#0b0e14; border:1px solid var(--cyan-neon); border-radius:12px; padding:24px; width:340px; max-width:90%; box-shadow:0 0 30px rgba(0,240,255,0.25); text-align:center;">
+<div id="pin-modal" style="display:none; position:fixed; z-index:99999; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); align-items:center; justify-content:center;">
+    <div style="background:#0b0e14; border:1px solid var(--cyan-neon); border-radius:14px; padding:24px; width:340px; max-width:90%; box-shadow:0 0 40px rgba(0,240,255,0.3); text-align:center;">
         <div style="font-size:32px; margin-bottom:8px;">🔐</div>
         <div style="font-size:15px; font-weight:800; color:#fff; font-family:var(--font-mono); margin-bottom:6px;">ADMIN PIN AUTHORIZATION</div>
-        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">Enter your 4-digit security PIN to command SPIDY live controls.</div>
-        <input type="password" id="pin-input" maxlength="8" placeholder="••••" autocomplete="off" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.7); border:1px solid rgba(0,240,255,0.5); border-radius:6px; padding:12px; font-size:24px; letter-spacing:10px; text-align:center; color:var(--cyan-neon); font-family:var(--font-mono); outline:none; margin-bottom:12px;" />
+        <div style="font-size:12px; color:var(--text-secondary); margin-bottom:16px;">Enter your 4-digit security PIN to unlock live trading controls.</div>
+        <input type="password" id="pin-input" maxlength="8" placeholder="••••" autocomplete="off" style="width:100%; box-sizing:border-box; background:rgba(0,0,0,0.7); border:1px solid rgba(0,240,255,0.5); border-radius:8px; padding:12px; font-size:24px; letter-spacing:10px; text-align:center; color:var(--cyan-neon); font-family:var(--font-mono); outline:none; margin-bottom:12px;" />
         <div id="pin-error-msg" style="color:var(--rose-neon); font-size:11px; font-family:var(--font-mono); min-height:16px; margin-bottom:12px;"></div>
         <div style="display:flex; gap:10px;">
             <button id="btn-pin-cancel" class="btn" style="flex:1; border-color:var(--border-color); color:var(--text-secondary);">Cancel</button>
@@ -432,11 +506,11 @@
 </div>
 
 <footer>
-    <div>SPIDY CRYPTO Core Version 2.0 • Complete Trading Intelligence Upgrade</div>
-    <div>Zero Auto Execution • 6 Models • Multi-Timeframe • Telegram Connected</div>
+    <div>SPIDY CRYPTO Core Version 2.0 • Institutional War Room Edition</div>
+    <div>Zero Blind Execution • 1H/4H Institutional Walls • Delta Exchange India • Telegram Connected</div>
 </footer>
 
-<script src="/static/app.js?v=3.9.0"></script>
+<script src="/static/app.js?v=4.0.0"></script>
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

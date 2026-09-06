@@ -1,4 +1,4 @@
-// SPIDY CRYPTO Reactive Client HUD Engine (Multi-Coin Reactive System)
+// SPIDY CRYPTO Reactive Client HUD Engine (Institutional Cyber-War-Room Edition)
 let ws = null;
 let currentSymbol = "ETHUSD";
 let currentResolution = "5m";
@@ -6,7 +6,64 @@ let currentCandles = [];
 let activeTrade = null;
 let marketStates = {};
 let coinAnalysisData = {};
-let selectedModelId = "MODEL_7";
+let selectedModelId = "MODEL_10";
+let userManuallySelectedSymbol = false;
+let lastActiveTradeId = null;
+
+// Audio Synthesizer State
+let soundEnabled = localStorage.getItem("spidy_sound_enabled") !== "false";
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) audioCtx = new AudioContext();
+        } catch (e) {
+            console.warn("Web Audio API not supported", e);
+        }
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume();
+    }
+}
+
+function playSynthesizerTone(freq, type, duration, gainLevel = 0.15) {
+    if (!soundEnabled) return;
+    try {
+        initAudio();
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(gainLevel, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {
+        // quiet audio fallback
+    }
+}
+
+const SoundFX = {
+    radarPing: () => {
+        playSynthesizerTone(880, "sine", 0.15, 0.08);
+    },
+    tradeEntry: () => {
+        playSynthesizerTone(440, "triangle", 0.1, 0.15);
+        setTimeout(() => playSynthesizerTone(660, "sine", 0.25, 0.2), 100);
+    },
+    targetHit: () => {
+        playSynthesizerTone(587.33, "sine", 0.12, 0.2);
+        setTimeout(() => playSynthesizerTone(880, "triangle", 0.3, 0.25), 120);
+    },
+    alertWarning: () => {
+        playSynthesizerTone(330, "sawtooth", 0.25, 0.12);
+    }
+};
 
 function getSymbolPrecision(sym) {
     if (sym === "XRPUSD") return 4;
@@ -20,8 +77,13 @@ function formatPrice(sym, val) {
     return Number(val).toFixed(getSymbolPrecision(sym));
 }
 
-let userManuallySelectedSymbol = false;
-let lastActiveTradeId = null;
+// Chart Crosshair Interaction State
+let chartHoverState = {
+    active: false,
+    x: 0,
+    y: 0,
+    candleIndex: -1
+};
 
 document.addEventListener("DOMContentLoaded", () => {
     initWebSocket();
@@ -37,6 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (sym) {
                 userManuallySelectedSymbol = true;
                 selectSymbol(sym);
+                SoundFX.radarPing();
             }
         });
     });
@@ -49,8 +112,21 @@ document.addEventListener("DOMContentLoaded", () => {
             currentResolution = btn.dataset.tf;
             document.getElementById("chart-symbol-label").textContent = `${currentSymbol} • ${currentResolution.toUpperCase()} CHART`;
             loadCandles(currentSymbol, currentResolution);
+            SoundFX.radarPing();
         });
     });
+
+    // Audio pill toggle
+    const audioPill = document.getElementById("audio-pill");
+    if (audioPill) {
+        updateAudioBadge();
+        audioPill.addEventListener("click", () => {
+            soundEnabled = !soundEnabled;
+            localStorage.setItem("spidy_sound_enabled", soundEnabled);
+            updateAudioBadge();
+            if (soundEnabled) SoundFX.radarPing();
+        });
+    }
 
     // Operational action buttons
     const btnPower = document.getElementById("btn-power-toggle");
@@ -100,6 +176,33 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
+    // Mobile Quick Dock Listeners (Thumb-friendly operations)
+    const dockBe = document.getElementById("dock-btn-be");
+    if (dockBe) dockBe.addEventListener("click", triggerBreakeven);
+
+    const dockPartial = document.getElementById("dock-btn-partial");
+    if (dockPartial) dockPartial.addEventListener("click", triggerPartial);
+
+    const dockClose = document.getElementById("dock-btn-close");
+    if (dockClose) dockClose.addEventListener("click", releaseActiveTradeLock);
+
+    const dockScan = document.getElementById("dock-btn-scan");
+    if (dockScan) dockScan.addEventListener("click", triggerScan);
+
+    const dockPin = document.getElementById("dock-btn-pin");
+    if (dockPin) {
+        dockPin.addEventListener("click", () => {
+            const stored = getStoredPin();
+            if (stored) {
+                if (confirm("Admin PIN is currently UNLOCKED. Do you want to lock it now?")) {
+                    setStoredPin("");
+                }
+            } else {
+                openPinModal(() => alert("Admin unlocked."));
+            }
+        });
+    }
+
     // PIN Security Pill click listener
     const secPill = document.getElementById("security-pill");
     if (secPill) {
@@ -110,9 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     setStoredPin("");
                 }
             } else {
-                openPinModal(() => {
-                    alert("Admin unlocked successfully.");
-                });
+                openPinModal(() => alert("Admin unlocked successfully."));
             }
         });
     }
@@ -132,14 +233,33 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Initialize security badge from session
+    // Initialize security badge from storage
     updateSecurityBadge(!!getStoredPin());
 
-    // Unconditional high-frequency status polling to ensure web HUD is always 100% in sync with Telegram
+    // Canvas Chart Crosshair & Touch Listeners
+    initChartInteraction();
+
+    // High-frequency status polling to sync HUD with Telegram
     setInterval(() => {
         fetchStatus();
     }, 2500);
 });
+
+function updateAudioBadge() {
+    const icon = document.getElementById("audio-icon");
+    const txt = document.getElementById("audio-status-text");
+    if (icon && txt) {
+        if (soundEnabled) {
+            icon.textContent = "🔊";
+            txt.textContent = "AUDIO: ON";
+            txt.style.color = "var(--cyan-neon)";
+        } else {
+            icon.textContent = "🔇";
+            txt.textContent = "AUDIO: MUTED";
+            txt.style.color = "var(--text-muted)";
+        }
+    }
+}
 
 function selectSymbol(sym) {
     currentSymbol = sym;
@@ -207,41 +327,6 @@ function selectSymbol(sym) {
             activeNotice.style.display = "none";
         }
     }
-
-    // 5. If backtest was executed, refresh highlight for selected coin
-    if (lastBacktestByMarket && lastBacktestByMarket[sym]) {
-        const bm = lastBacktestByMarket[sym];
-        const bmColor = bm.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
-        const box = document.getElementById("backtest-summary-box");
-        const content = document.getElementById("backtest-summary-content");
-        if (box && content && box.style.display !== "none") {
-            let html = `
-                <div style="font-size:12px; margin-bottom:4px;">
-                    <strong style="color:var(--cyan-neon);">[ ${sym} BACKTEST ]:</strong>
-                    Trades: <strong>${bm.trades}</strong> | 
-                    Win Rate: <strong style="color:var(--emerald-neon)">${bm.win_rate}%</strong> | 
-                    Total Gain: <strong style="color:${bmColor}">${bm.total_r > 0 ? '+' : ''}${bm.total_r}R</strong> | 
-                    Profit Factor: <strong>${bm.profit_factor}</strong>
-                </div>
-            `;
-            html += `<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:12px; font-size:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">`;
-            for (const [s, b] of Object.entries(lastBacktestByMarket)) {
-                const c = b.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
-                const isSel = s === sym;
-                html += `
-                    <div style="${isSel ? 'background:rgba(0,240,255,0.15); padding:2px 6px; border-radius:4px; border:1px solid var(--cyan-neon);' : ''}">
-                        <strong style="color:${isSel ? 'var(--cyan-neon)' : '#fff'};">${s}:</strong> 
-                        ${b.trades} trds | 
-                        WR: <strong style="color:var(--emerald-neon);">${b.win_rate}%</strong> | 
-                        Gain: <strong style="color:${c};">${b.total_r > 0 ? '+' : ''}${b.total_r}R</strong> | 
-                        PF: ${b.profit_factor}
-                    </div>
-                `;
-            }
-            html += `</div>`;
-            content.innerHTML = html;
-        }
-    }
 }
 
 function initWebSocket() {
@@ -298,7 +383,7 @@ async function fetchStatus() {
             updateHUD(data);
         }
     } catch (e) {
-        // Fallback quiet
+        // quiet fallback
     }
 }
 
@@ -309,6 +394,7 @@ async function fetchCoinAnalysis(sym) {
             const data = await res.json();
             coinAnalysisData[sym] = data;
             renderTacticalPanel(data);
+            pushRadarEventsFromAnalysis(data);
         }
     } catch (e) {
         console.error("Error fetching coin analysis", e);
@@ -481,6 +567,8 @@ function updatePrice(symbol, price, isStale, connStatus) {
         renderActiveTradeWarRoom(activeTrade);
     }
     if (symbol === currentSymbol) {
+        const liveMarkEl = document.getElementById("chart-live-mark-hud");
+        if (liveMarkEl) liveMarkEl.textContent = `LIVE MARK: $${formatPrice(symbol, price)}`;
         drawChart();
     }
 }
@@ -530,7 +618,7 @@ function renderTacticalPanel(data) {
 
     const policyBadge = document.getElementById("trade-policy-badge");
     if (policyBadge) {
-        policyBadge.textContent = data.policy || (data.grade === "B+" ? "Strict Risk (Tight SL / Quick 1.4R TP)" : "Institutional Conviction");
+        policyBadge.textContent = data.policy || (data.grade === "B+" ? "Strict Risk (Tight SL / Quick 1.6R TP)" : "Institutional Conviction");
     }
 
     // Dealing Range (Premium vs Discount) & Displacement
@@ -585,7 +673,7 @@ function renderTacticalPanel(data) {
         }
     }
 
-    // Dynamic Progression Bar (reflects exact progression of this coin!)
+    // Dynamic Progression Bar
     const progContainer = document.getElementById("progression-bar");
     if (progContainer && data.progression_steps) {
         progContainer.innerHTML = "";
@@ -624,6 +712,68 @@ function renderTacticalPanel(data) {
     }
 
     drawChart();
+}
+
+// Institutional Radar Stream Events Queue
+const radarEventsQueue = [];
+
+function pushRadarEventsFromAnalysis(data) {
+    if (!data) return;
+    const container = document.getElementById("radar-feed-container");
+    if (!container) return;
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    // Look for high-priority radar events
+    if (data.barrier && data.barrier.htf_institutional_walls && data.barrier.htf_institutional_walls.length > 0) {
+        const wall = data.barrier.htf_institutional_walls[0];
+        addRadarItem({
+            sym: data.symbol,
+            time: timeStr,
+            desc: `1H/4H Institutional White Line Origin mapped at $${formatPrice(data.symbol, wall)}.`
+        });
+    }
+
+    if (data.smt && data.smt.detected) {
+        addRadarItem({
+            sym: "SMT",
+            time: timeStr,
+            desc: `Intermarket SMT Divergence confirmed: ${data.smt.description}`
+        });
+    }
+
+    if (data.kill_zone && data.kill_zone.is_active_kill_zone) {
+        addRadarItem({
+            sym: "SESSION",
+            time: timeStr,
+            desc: `Active Institutional Window: ${data.kill_zone.description}`
+        });
+    }
+}
+
+function addRadarItem(item) {
+    // Avoid exact duplicate descriptions in queue
+    if (radarEventsQueue.some(e => e.desc === item.desc && e.sym === item.sym)) return;
+
+    radarEventsQueue.unshift(item);
+    if (radarEventsQueue.length > 8) radarEventsQueue.pop();
+
+    const container = document.getElementById("radar-feed-container");
+    if (!container) return;
+
+    container.innerHTML = "";
+    radarEventsQueue.forEach(ev => {
+        const card = document.createElement("div");
+        card.className = "radar-event-card";
+        card.innerHTML = `
+            <div class="rec-top">
+                <span class="rec-sym">${ev.sym}</span>
+                <span class="rec-time">${ev.time}</span>
+            </div>
+            <div class="rec-desc">${ev.desc}</div>
+        `;
+        container.appendChild(card);
+    });
 }
 
 function renderModelStats(stats) {
@@ -690,12 +840,44 @@ function renderHistoryTable(items) {
     });
 }
 
+// ========================================================
+// PRO-GRADE CANVAS CHART ENGINE (HTF WHITE LINE + SMC OVERLAYS)
+// ========================================================
+function initChartInteraction() {
+    const canvas = document.getElementById("chart-canvas");
+    if (!canvas) return;
+
+    const handlePointerMove = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        chartHoverState.active = true;
+        chartHoverState.x = clientX - rect.left;
+        chartHoverState.y = clientY - rect.top;
+        drawChart();
+    };
+
+    const handlePointerLeave = () => {
+        chartHoverState.active = false;
+        const tip = document.getElementById("chart-tooltip");
+        if (tip) tip.style.display = "none";
+        drawChart();
+    };
+
+    canvas.addEventListener("mousemove", handlePointerMove);
+    canvas.addEventListener("mouseleave", handlePointerLeave);
+    canvas.addEventListener("touchmove", handlePointerMove, { passive: true });
+    canvas.addEventListener("touchend", handlePointerLeave);
+}
+
 function drawChart() {
     const canvas = document.getElementById("chart-canvas");
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
 
     const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
     canvas.width = rect.width * window.devicePixelRatio;
     canvas.height = rect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
@@ -706,10 +888,10 @@ function drawChart() {
     ctx.clearRect(0, 0, w, h);
 
     if (!currentCandles || currentCandles.length === 0) {
-        ctx.fillStyle = "rgba(255,255,255,0.2)";
-        ctx.font = "13px monospace";
+        ctx.fillStyle = "rgba(255,255,255,0.25)";
+        ctx.font = "12px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(`Loading ${currentSymbol} ${currentResolution.toUpperCase()} candles...`, w / 2, h / 2);
+        ctx.fillText(`Loading ${currentSymbol} ${currentResolution.toUpperCase()} institutional telemetry...`, w / 2, h / 2);
         return;
     }
 
@@ -719,368 +901,233 @@ function drawChart() {
     let maxPrice = Math.max(...candles.map(c => c.high));
 
     const coinData = coinAnalysisData[currentSymbol];
+    
+    // Include active trade levels in price scaling
     if (coinData && coinData.levels && coinData.is_active_trade) {
         minPrice = Math.min(minPrice, coinData.levels.stop_loss, coinData.levels.entry);
         maxPrice = Math.max(maxPrice, coinData.levels.target_2, coinData.levels.entry);
     }
 
-    const pad = (maxPrice - minPrice) * 0.1 || 1.0;
+    // Include HTF Institutional Walls ("The White Line") in bounds if near range
+    const htfWalls = (coinData && coinData.barrier && coinData.barrier.htf_institutional_walls) || [];
+    htfWalls.forEach(wall => {
+        if (wall >= minPrice * 0.95 && wall <= maxPrice * 1.05) {
+            minPrice = Math.min(minPrice, wall);
+            maxPrice = Math.max(maxPrice, wall);
+        }
+    });
+
+    // Include Dealing Range equilibrium
+    if (coinData && coinData.dealing_range) {
+        const dr = coinData.dealing_range;
+        if (dr.range_low && dr.range_high) {
+            minPrice = Math.min(minPrice, dr.range_low);
+            maxPrice = Math.max(maxPrice, dr.range_high);
+        }
+    }
+
+    const pad = (maxPrice - minPrice) * 0.12 || 1.0;
     minPrice -= pad;
     maxPrice += pad;
     const priceRange = maxPrice - minPrice;
 
     function getY(p) {
-        return h - ((p - minPrice) / priceRange) * (h - 40) - 20;
+        return h - ((p - minPrice) / priceRange) * (h - 50) - 25;
     }
 
-    // Grid lines
-    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    // 1. DEALING RANGE ZONES (Premium vs Discount Tint)
+    if (coinData && coinData.dealing_range) {
+        const dr = coinData.dealing_range;
+        const yEq = getY(dr.equilibrium);
+        const yHigh = getY(dr.range_high);
+        const yLow = getY(dr.range_low);
+
+        // Premium Zone Fill (>50% Eq)
+        ctx.fillStyle = "rgba(244, 63, 94, 0.04)";
+        ctx.fillRect(40, Math.min(yHigh, yEq), w - 80, Math.abs(yHigh - yEq));
+
+        // Discount Zone Fill (<50% Eq)
+        ctx.fillStyle = "rgba(16, 185, 129, 0.04)";
+        ctx.fillRect(40, Math.min(yEq, yLow), w - 80, Math.abs(yEq - yLow));
+
+        // Equilibrium Dotted Line
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.4)";
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, yEq);
+        ctx.lineTo(w - 40, yEq);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = "rgba(0, 240, 255, 0.7)";
+        ctx.font = "9px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`EQ 50%: ${formatPrice(currentSymbol, dr.equilibrium)}`, w - 45, yEq - 3);
+    }
+
+    // 2. BACKGROUND VOLATILITY GRID
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
     ctx.lineWidth = 1;
-    for (let i = 1; i <= 4; i++) {
-        const y = (h / 5) * i;
+    for (let i = 1; i <= 5; i++) {
+        const y = (h / 6) * i;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(w, y);
         ctx.stroke();
     }
 
-    const candleWidth = Math.max(3, (w - 60) / n - 3);
+    // 3. HTF INSTITUTIONAL WALLS ("THE WHITE LINE")
+    htfWalls.forEach((wallPrice, idx) => {
+        const yWall = getY(wallPrice);
+        if (yWall >= 10 && yWall <= h - 10) {
+            ctx.save();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 1.8;
+            ctx.setLineDash([8, 4]);
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.moveTo(40, yWall);
+            ctx.lineTo(w - 40, yWall);
+            ctx.stroke();
+            ctx.restore();
+
+            // Luminous White Line label
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 9px monospace";
+            ctx.textAlign = "left";
+            ctx.fillText(`⚪ HTF WHITE LINE: $${formatPrice(currentSymbol, wallPrice)}`, 45, yWall - 4);
+        }
+    });
+
+    // 4. CANDLESTICK RENDERING
+    const chartLeft = 45;
+    const chartRight = w - 45;
+    const candleSpacing = (chartRight - chartLeft) / n;
+    const candleWidth = Math.max(3.5, candleSpacing * 0.65);
+
+    let hoveredCandle = null;
+    let hoveredX = 0;
+    let hoveredY = 0;
 
     candles.forEach((c, idx) => {
-        const x = 30 + idx * ((w - 60) / n);
+        const x = chartLeft + (idx + 0.5) * candleSpacing;
         const yOpen = getY(c.open);
         const yClose = getY(c.close);
         const yHigh = getY(c.high);
         const yLow = getY(c.low);
 
         const isGreen = c.close >= c.open;
-        ctx.strokeStyle = isGreen ? "#10b981" : "#f43f5e";
-        ctx.fillStyle = isGreen ? "#10b981" : "#f43f5e";
+        const color = isGreen ? "#10b981" : "#f43f5e";
 
+        // Wick
+        ctx.strokeStyle = color;
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.moveTo(x, yHigh);
         ctx.lineTo(x, yLow);
         ctx.stroke();
 
+        // Candle Body
+        ctx.fillStyle = color;
         const bodyTop = Math.min(yOpen, yClose);
         const bodyHeight = Math.max(2, Math.abs(yOpen - yClose));
         ctx.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+
+        // Check hover
+        if (chartHoverState.active && Math.abs(chartHoverState.x - x) < candleSpacing / 2) {
+            hoveredCandle = c;
+            hoveredX = x;
+            hoveredY = chartHoverState.y;
+        }
     });
 
-    // Draw technical levels ONLY if an active/waiting trade is open on this coin!
+    // 5. TECHNICAL LEVEL OVERLAYS (ONLY IF ACTIVE TRADE IS ON COIN)
     if (coinData && coinData.levels && coinData.is_active_trade) {
         const lvls = coinData.levels;
-        const dec = currentSymbol === "XRPUSD" ? 4 : 2;
-        drawHLine(ctx, w, getY(lvls.entry), "#00f0ff", `ENTRY: ${lvls.entry.toFixed(dec)}`);
-        drawHLine(ctx, w, getY(lvls.stop_loss), "#f43f5e", `STOP: ${lvls.stop_loss.toFixed(dec)}`);
-        drawHLine(ctx, w, getY(lvls.target_1), "#10b981", `T1: ${lvls.target_1.toFixed(dec)}`);
-        drawHLine(ctx, w, getY(lvls.target_2), "#34d399", `T2: ${lvls.target_2.toFixed(dec)}`);
+        drawHLine(ctx, w, getY(lvls.entry), "#00f0ff", `ENTRY: $${formatPrice(currentSymbol, lvls.entry)}`);
+        drawHLine(ctx, w, getY(lvls.stop_loss), "#f43f5e", `STOP: $${formatPrice(currentSymbol, lvls.stop_loss)}`);
+        drawHLine(ctx, w, getY(lvls.target_1), "#10b981", `TP1 (1.8R): $${formatPrice(currentSymbol, lvls.target_1)}`);
+        drawHLine(ctx, w, getY(lvls.target_2), "#34d399", `TP2 (2.5R): $${formatPrice(currentSymbol, lvls.target_2)}`);
+    }
+
+    // 6. LIVE MARK BEACON
+    const livePrice = (marketStates[currentSymbol] && marketStates[currentSymbol].current_price) ? marketStates[currentSymbol].current_price : (candles[candles.length - 1].close);
+    if (livePrice) {
+        const yLive = getY(livePrice);
+        ctx.strokeStyle = "rgba(0, 240, 255, 0.75)";
+        ctx.setLineDash([2, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(chartLeft, yLive);
+        ctx.lineTo(chartRight, yLive);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Live dot on right
+        ctx.fillStyle = "#00f0ff";
+        ctx.beginPath();
+        ctx.arc(chartRight, yLive, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // 7. INTERACTIVE CROSSHAIR & TOOLTIP
+    if (chartHoverState.active && hoveredCandle) {
+        // Vertical crosshair
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.35)";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(hoveredX, 10);
+        ctx.lineTo(hoveredX, h - 20);
+        ctx.stroke();
+
+        // Horizontal crosshair
+        ctx.beginPath();
+        ctx.moveTo(chartLeft, hoveredY);
+        ctx.lineTo(chartRight, hoveredY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Update Tooltip
+        const tip = document.getElementById("chart-tooltip");
+        if (tip) {
+            tip.style.display = "block";
+            tip.style.left = `${Math.min(w - 180, Math.max(10, hoveredX - 70))}px`;
+            tip.style.top = `15px`;
+
+            const c = hoveredCandle;
+            const dt = c.time ? new Date(c.time * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--';
+            tip.innerHTML = `
+                <div style="font-weight:800; color:var(--cyan-neon); margin-bottom:2px;">${currentSymbol} • ${dt}</div>
+                <div>O: $${formatPrice(currentSymbol, c.open)} | H: $${formatPrice(currentSymbol, c.high)}</div>
+                <div>L: $${formatPrice(currentSymbol, c.low)} | C: $${formatPrice(currentSymbol, c.close)}</div>
+            `;
+        }
     }
 }
 
 function drawHLine(ctx, w, y, color, label) {
     ctx.strokeStyle = color;
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash([5, 4]);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(30, y);
-    ctx.lineTo(w - 30, y);
+    ctx.moveTo(40, y);
+    ctx.lineTo(w - 40, y);
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Draw pill tag
     ctx.fillStyle = color;
-    ctx.font = "10px monospace";
+    ctx.font = "bold 9px monospace";
     ctx.textAlign = "right";
-    ctx.fillText(label, w - 35, y - 4);
-}
-
-async function triggerScan() {
-    const btn = document.getElementById("btn-scan");
-    const box = document.getElementById("scan-result-box");
-    const content = document.getElementById("scan-result-content");
-
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = "⏳ Scanning 9 Models Across Markets...";
-        btn.style.borderColor = "var(--amber-neon)";
-        btn.style.color = "var(--amber-neon)";
-    }
-    if (box) {
-        box.style.display = "block";
-        content.innerHTML = "<em>Querying Delta Exchange live feeds & evaluating 27 model checks...</em>";
-    }
-
-    try {
-        const res = await fetch("/api/trigger_scan", { method: "POST" });
-        const data = await res.json();
-        
-        if (box && data.results) {
-            let html = `<div style="margin-bottom:6px; color:#fff;">${data.message}</div>`;
-            html += `<table style="width:100%; font-size:10px; border-collapse:collapse;">`;
-            data.results.forEach(r => {
-                html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
-                    <td style="font-weight:700; color:var(--cyan-neon); padding:2px 4px;">${r.symbol}:</td>
-                    <td style="color:${r.status.includes('QUALIFIED') ? 'var(--emerald-neon)' : 'var(--text-secondary)'}; padding:2px 4px;">${r.status}</td>
-                    <td style="color:var(--purple-neon); padding:2px 4px;">${r.confirmations}</td>
-                    <td style="color:var(--text-muted); padding:2px 4px;">${r.best_model}</td>
-                </tr>`;
-            });
-            html += `</table>`;
-            content.innerHTML = html;
-        }
-
-        fetchStatus();
-        fetchCoinAnalysis(currentSymbol);
-    } catch (e) {
-        if (content) content.textContent = "Scan error: " + e;
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = "⚡ Trigger Market Scan (9 Models) ✓";
-            btn.style.borderColor = "var(--cyan-neon)";
-            btn.style.color = "#fff";
-            setTimeout(() => {
-                btn.textContent = "⚡ Trigger Market Scan (9 Models)";
-            }, 2500);
-        }
-    }
+    ctx.fillText(label, w - 45, y - 4);
 }
 
 // ==========================================
-// 4-DIGIT ADMIN PIN SECURITY SYSTEM (PIN: 1408)
+// WAR ROOM RENDERING & JOURNEY TRACK
 // ==========================================
-let pendingPinAction = null;
-
-function getStoredPin() {
-    return sessionStorage.getItem("spidy_admin_pin") || "";
-}
-
-function setStoredPin(pin) {
-    if (pin) {
-        sessionStorage.setItem("spidy_admin_pin", pin);
-        updateSecurityBadge(true);
-    } else {
-        sessionStorage.removeItem("spidy_admin_pin");
-        updateSecurityBadge(false);
-    }
-}
-
-function updateSecurityBadge(unlocked) {
-    const icon = document.getElementById("security-lock-icon");
-    const txt = document.getElementById("security-status-text");
-    if (icon && txt) {
-        if (unlocked) {
-            icon.textContent = "🔓";
-            txt.textContent = "ADMIN UNLOCKED";
-            txt.style.color = "var(--emerald-neon)";
-        } else {
-            icon.textContent = "🔒";
-            txt.textContent = "PIN LOCKED";
-            txt.style.color = "var(--amber-neon)";
-        }
-    }
-}
-
-async function verifyPinWithServer(pin) {
-    try {
-        const res = await fetch("/api/verify_pin", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ pin: pin })
-        });
-        return res.ok;
-    } catch (e) {
-        console.error("PIN verification error", e);
-        return false;
-    }
-}
-
-function openPinModal(onSuccess) {
-    pendingPinAction = onSuccess;
-    const modal = document.getElementById("pin-modal");
-    const input = document.getElementById("pin-input");
-    const errMsg = document.getElementById("pin-error-msg");
-    if (modal && input) {
-        modal.style.display = "flex";
-        input.value = "";
-        if (errMsg) errMsg.textContent = "";
-        setTimeout(() => input.focus(), 50);
-    }
-}
-
-function closePinModal() {
-    const modal = document.getElementById("pin-modal");
-    if (modal) modal.style.display = "none";
-    pendingPinAction = null;
-}
-
-async function submitPinAuth() {
-    const input = document.getElementById("pin-input");
-    const errMsg = document.getElementById("pin-error-msg");
-    const pin = (input ? input.value : "").trim();
-    if (!pin) {
-        if (errMsg) errMsg.textContent = "Please enter 4-digit PIN";
-        return;
-    }
-
-    const isValid = await verifyPinWithServer(pin);
-    if (isValid) {
-        setStoredPin(pin);
-        const action = pendingPinAction;
-        closePinModal();
-        if (action) action(pin);
-    } else {
-        if (errMsg) errMsg.textContent = "❌ Invalid PIN. Access Denied.";
-        if (input) {
-            input.value = "";
-            input.focus();
-        }
-    }
-}
-
-function requireAdminPin(action) {
-    const stored = getStoredPin();
-    if (stored) {
-        action(stored);
-    } else {
-        openPinModal(action);
-    }
-}
-
-async function releaseActiveTradeLock() {
-    if (!confirm("Are you sure you want to command SPIDY to stop and close the active trade?")) {
-        return;
-    }
-    requireAdminPin(async (pin) => {
-        try {
-            const res = await fetch("/api/close_active_trade", {
-                method: "POST",
-                headers: { "X-Admin-PIN": pin }
-            });
-            if (res.status === 401) {
-                setStoredPin("");
-                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
-                openPinModal(() => releaseActiveTradeLock());
-                return;
-            }
-            const data = await res.json();
-            fetchStatus();
-            fetchCoinAnalysis(currentSymbol);
-            alert(data.message || "Active trade lock released.");
-        } catch (e) {
-            console.error("Release lock error", e);
-        }
-    });
-}
-
-let lastBacktestByMarket = null;
-
-async function runBacktest() {
-    const box = document.getElementById("backtest-summary-box");
-    const content = document.getElementById("backtest-summary-content");
-    box.style.display = "block";
-    content.innerHTML = `<em>Running event-driven institutional backtest for <strong>${currentSymbol}</strong> & portfolio...</em>`;
-
-    try {
-        const res = await fetch(`/api/backtest/run?symbol=${currentSymbol}`, { method: "POST" });
-        const data = await res.json();
-        if (data.metrics) {
-            const m = data.metrics;
-            lastBacktestByMarket = data.by_market;
-            const rColor = m.total_r_gain >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
-
-            let html = `
-                <div style="font-size:12px; margin-bottom:4px;">
-                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} BACKTEST ]:</strong>
-                    Trades: <strong>${m.total_trades}</strong> | 
-                    Win Rate: <strong style="color:var(--emerald-neon)">${m.win_rate}%</strong> | 
-                    Expectancy: <strong>${m.expectancy}R</strong> | 
-                    Profit Factor: <strong>${m.profit_factor}</strong> | 
-                    Total Gain: <strong style="color:${rColor}">${m.total_r_gain > 0 ? '+' : ''}${m.total_r_gain}R</strong> | 
-                    Max DD: <strong>${m.max_drawdown_r}R</strong>
-                </div>
-            `;
-
-            if (data.by_market && Object.keys(data.by_market).length > 0) {
-                html += `<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:12px; font-size:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">`;
-                for (const [sym, bm] of Object.entries(data.by_market)) {
-                    const bmColor = bm.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
-                    const isSelected = sym === currentSymbol;
-                    html += `
-                        <div style="${isSelected ? 'background:rgba(0,240,255,0.15); padding:2px 6px; border-radius:4px; border:1px solid var(--cyan-neon);' : ''}">
-                            <strong style="color:${isSelected ? 'var(--cyan-neon)' : '#fff'};">${sym}:</strong> 
-                            ${bm.trades} trds | 
-                            WR: <strong style="color:var(--emerald-neon);">${bm.win_rate}%</strong> | 
-                            Gain: <strong style="color:${bmColor};">${bm.total_r > 0 ? '+' : ''}${bm.total_r}R</strong> | 
-                            PF: ${bm.profit_factor}
-                        </div>
-                    `;
-                }
-                html += `</div>`;
-            }
-
-            content.innerHTML = html;
-
-            // Immediately hydrate Model Performance Tracking with REAL, non-zero stats
-            if (data.model_stats) {
-                renderModelStats(data.model_stats);
-            }
-        }
-    } catch (e) {
-        content.textContent = "Error executing backtest: " + e;
-    }
-}
-
-async function runValidation() {
-    const box = document.getElementById("backtest-summary-box");
-    const content = document.getElementById("backtest-summary-content");
-    box.style.display = "block";
-    content.innerHTML = `<em>Running In-Sample (70%) vs Out-of-Sample (30%) validation for <strong>${currentSymbol}</strong>...</em>`;
-
-    try {
-        const res = await fetch(`/api/backtest/validate?symbol=${currentSymbol}`, { method: "POST" });
-        const data = await res.json();
-        if (data.retention) {
-            content.innerHTML = `
-                <div style="font-size:12px; margin-bottom:4px;">
-                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} VALIDATION ]:</strong>
-                    In-Sample Trades: <strong>${data.in_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.in_sample_metrics.win_rate}%</strong>)<br>
-                    Out-of-Sample Trades: <strong>${data.out_of_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.out_of_sample_metrics.win_rate}%</strong>)<br>
-                    Win Rate Retention: <strong>${data.retention.win_rate_retention_pct}%</strong> | 
-                    Robust Institutional Edge: <strong style="color:${data.is_robust ? 'var(--emerald-neon)' : 'var(--amber-neon)'}">${data.is_robust ? 'CONFIRMED' : 'REFINING'}</strong>
-                </div>
-            `;
-        }
-    } catch (e) {
-        content.textContent = "Error executing validation: " + e;
-    }
-}
-
-async function simulateSetup(dir) {
-    requireAdminPin(async (pin) => {
-        try {
-            const modelEl = document.getElementById("select-test-model");
-            const modelId = modelEl ? modelEl.value : "MODEL_7";
-            const res = await fetch(`/api/simulate_setup?symbol=${currentSymbol}&direction=${dir}&model_id=${modelId}&force=true`, {
-                method: "POST",
-                headers: { "X-Admin-PIN": pin }
-            });
-            if (res.status === 401) {
-                setStoredPin("");
-                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
-                openPinModal(() => simulateSetup(dir));
-                return;
-            }
-            await res.json();
-            fetchStatus();
-            fetchCoinAnalysis(currentSymbol);
-        } catch (e) {
-            console.error("Simulation error", e);
-        }
-    });
-}
-
 function renderActiveTradeWarRoom(at) {
     const banner = document.getElementById("global-active-trade-banner");
     const standby = document.getElementById("global-standby-banner");
@@ -1180,7 +1227,6 @@ function renderActiveTradeWarRoom(at) {
         pointsMovedEl.style.color = pointsMoved >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
     }
 
-    // Exact PnL using Delta Exchange point value formula
     let pnlInr = ptInr > 0 ? (pointsMoved * ptInr) : (margin * ((entry > 0 ? priceDiff / entry : 0) * lev));
     let pnlPct = margin > 0 ? (pnlInr / margin) * 100 : 0;
     let riskDist = Math.abs(entry - sl);
@@ -1201,7 +1247,39 @@ function renderActiveTradeWarRoom(at) {
         rEl.style.color = pnlColor;
     }
 
-    // Highlight card in market strip: ONLY the active coin gets in-trade badge!
+    // UPDATE TARGET CONVERGENCE JOURNEY TRACK
+    const journeyBar = document.getElementById("wt-journey-bar");
+    const journeyPointer = document.getElementById("wt-journey-pointer");
+    const journeyPct = document.getElementById("wt-journey-pct");
+
+    const jValEntry = document.getElementById("j-val-entry");
+    const jValT1 = document.getElementById("j-val-t1");
+    const jValT2 = document.getElementById("j-val-t2");
+
+    if (jValEntry) jValEntry.textContent = `$${formatPrice(sym, entry)}`;
+    if (jValT1) jValT1.textContent = `$${formatPrice(sym, t1)}`;
+    if (jValT2) jValT2.textContent = `$${formatPrice(sym, t2)}`;
+
+    // Calculate percentage toward TP1 (where 100% = TP1)
+    let t1Dist = Math.abs(t1 - entry);
+    let progressPct = t1Dist > 0 ? Math.max(0, Math.min(100, (priceDiff / t1Dist) * 100)) : 0;
+
+    if (journeyBar) journeyBar.style.width = `${progressPct}%`;
+    if (journeyPointer) journeyPointer.style.left = `${progressPct}%`;
+    if (journeyPct) {
+        journeyPct.textContent = `${progressPct.toFixed(1)}% TO TP1 (${pnlSign}${achR.toFixed(2)}R)`;
+    }
+
+    const stepBe = document.getElementById("j-step-be");
+    const stepT1 = document.getElementById("j-step-t1");
+    if (stepBe) {
+        stepBe.className = achR >= 0.8 ? "journey-step passed" : "journey-step";
+    }
+    if (stepT1) {
+        stepT1.className = achR >= 1.6 ? "journey-step passed" : "journey-step";
+    }
+
+    // Highlight card in market strip
     document.querySelectorAll(".market-card").forEach(c => {
         const cardSym = c.dataset.symbol;
         const stEl = document.getElementById(`status-${cardSym}`);
@@ -1225,28 +1303,304 @@ function renderActiveTradeWarRoom(at) {
         lastActiveTradeId = at.setup_id;
         userManuallySelectedSymbol = false;
         selectSymbol(sym);
+        SoundFX.tradeEntry();
     } else if (!userManuallySelectedSymbol && currentSymbol !== sym) {
         selectSymbol(sym);
     }
+}
 
-    // Update contextual banner if previewing another coin
-    const activeNotice = document.getElementById("tactical-active-notice");
-    if (activeNotice) {
-        if (currentSymbol !== sym) {
-            activeNotice.style.display = "flex";
-            const cEl = document.getElementById("tactical-notice-coin");
-            const dEl = document.getElementById("tactical-notice-dir");
-            const vEl = document.getElementById("tactical-notice-viewing");
-            if (cEl) cEl.textContent = sym;
-            if (dEl) {
-                dEl.textContent = `(${dir})`;
-                dEl.style.color = dir === "LONG" ? "var(--emerald-neon)" : "var(--rose-neon)";
-            }
-            if (vEl) vEl.textContent = currentSymbol;
+// ==========================================
+// 4-DIGIT ADMIN PIN SECURITY SYSTEM (PIN: 1408)
+// ==========================================
+let pendingPinAction = null;
+
+function getStoredPin() {
+    return sessionStorage.getItem("spidy_admin_pin") || localStorage.getItem("spidy_admin_pin") || "";
+}
+
+function setStoredPin(pin) {
+    if (pin) {
+        sessionStorage.setItem("spidy_admin_pin", pin);
+        localStorage.setItem("spidy_admin_pin", pin);
+        updateSecurityBadge(true);
+    } else {
+        sessionStorage.removeItem("spidy_admin_pin");
+        localStorage.removeItem("spidy_admin_pin");
+        updateSecurityBadge(false);
+    }
+}
+
+function updateSecurityBadge(unlocked) {
+    const icon = document.getElementById("security-lock-icon");
+    const txt = document.getElementById("security-status-text");
+    if (icon && txt) {
+        if (unlocked) {
+            icon.textContent = "🔓";
+            txt.textContent = "ADMIN UNLOCKED";
+            txt.style.color = "var(--emerald-neon)";
         } else {
-            activeNotice.style.display = "none";
+            icon.textContent = "🔒";
+            txt.textContent = "PIN LOCKED";
+            txt.style.color = "var(--amber-neon)";
         }
     }
+}
+
+async function verifyPinWithServer(pin) {
+    try {
+        const res = await fetch("/api/verify_pin", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pin: pin })
+        });
+        return res.ok;
+    } catch (e) {
+        console.error("PIN verification error", e);
+        return false;
+    }
+}
+
+function openPinModal(onSuccess) {
+    pendingPinAction = onSuccess;
+    const modal = document.getElementById("pin-modal");
+    const input = document.getElementById("pin-input");
+    const errMsg = document.getElementById("pin-error-msg");
+    if (modal && input) {
+        modal.style.display = "flex";
+        input.value = "";
+        if (errMsg) errMsg.textContent = "";
+        setTimeout(() => input.focus(), 50);
+    }
+}
+
+function closePinModal() {
+    const modal = document.getElementById("pin-modal");
+    if (modal) modal.style.display = "none";
+    pendingPinAction = null;
+}
+
+async function submitPinAuth() {
+    const input = document.getElementById("pin-input");
+    const errMsg = document.getElementById("pin-error-msg");
+    const pin = (input ? input.value : "").trim();
+    if (!pin) {
+        if (errMsg) errMsg.textContent = "Please enter 4-digit PIN";
+        return;
+    }
+
+    const isValid = await verifyPinWithServer(pin);
+    if (isValid) {
+        setStoredPin(pin);
+        const action = pendingPinAction;
+        closePinModal();
+        SoundFX.radarPing();
+        if (action) action(pin);
+    } else {
+        if (errMsg) errMsg.textContent = "❌ Invalid PIN. Access Denied.";
+        SoundFX.alertWarning();
+        if (input) {
+            input.value = "";
+            input.focus();
+        }
+    }
+}
+
+function requireAdminPin(action) {
+    const stored = getStoredPin();
+    if (stored) {
+        action(stored);
+    } else {
+        openPinModal(action);
+    }
+}
+
+async function releaseActiveTradeLock() {
+    if (!confirm("Are you sure you want to command SPIDY to stop and close the active trade?")) {
+        return;
+    }
+    requireAdminPin(async (pin) => {
+        try {
+            const res = await fetch("/api/close_active_trade", {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => releaseActiveTradeLock());
+                return;
+            }
+            const data = await res.json();
+            fetchStatus();
+            fetchCoinAnalysis(currentSymbol);
+            SoundFX.alertWarning();
+            alert(data.message || "Active trade lock released.");
+        } catch (e) {
+            console.error("Release lock error", e);
+        }
+    });
+}
+
+let lastBacktestByMarket = null;
+
+async function triggerScan() {
+    const btn = document.getElementById("btn-scan");
+    const box = document.getElementById("scan-result-box");
+    const content = document.getElementById("scan-result-content");
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "⏳ Scanning 9 Models Across Markets...";
+        btn.style.borderColor = "var(--amber-neon)";
+        btn.style.color = "var(--amber-neon)";
+    }
+    if (box) {
+        box.style.display = "block";
+        content.innerHTML = "<em>Querying Delta Exchange live feeds & evaluating 27 model checks...</em>";
+    }
+
+    try {
+        const res = await fetch("/api/trigger_scan", { method: "POST" });
+        const data = await res.json();
+        
+        if (box && data.results) {
+            let html = `<div style="margin-bottom:6px; color:#fff;">${data.message}</div>`;
+            html += `<table style="width:100%; font-size:10px; border-collapse:collapse;">`;
+            data.results.forEach(r => {
+                html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.05); padding:2px 0;">
+                    <td style="font-weight:700; color:var(--cyan-neon); padding:2px 4px;">${r.symbol}:</td>
+                    <td style="color:${r.status.includes('QUALIFIED') ? 'var(--emerald-neon)' : 'var(--text-secondary)'}; padding:2px 4px;">${r.status}</td>
+                    <td style="color:var(--purple-neon); padding:2px 4px;">${r.confirmations}</td>
+                    <td style="color:var(--text-muted); padding:2px 4px;">${r.best_model}</td>
+                </tr>`;
+            });
+            html += `</table>`;
+            content.innerHTML = html;
+        }
+
+        SoundFX.radarPing();
+        fetchStatus();
+        fetchCoinAnalysis(currentSymbol);
+    } catch (e) {
+        if (content) content.textContent = "Scan error: " + e;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "⚡ Trigger Market Scan (9 Models) ✓";
+            btn.style.borderColor = "var(--cyan-neon)";
+            btn.style.color = "#fff";
+            setTimeout(() => {
+                btn.textContent = "⚡ Trigger Market Scan (9 Models)";
+            }, 2500);
+        }
+    }
+}
+
+async function runBacktest() {
+    const box = document.getElementById("backtest-summary-box");
+    const content = document.getElementById("backtest-summary-content");
+    box.style.display = "block";
+    content.innerHTML = `<em>Running event-driven institutional backtest for <strong>${currentSymbol}</strong> & portfolio...</em>`;
+
+    try {
+        const res = await fetch(`/api/backtest/run?symbol=${currentSymbol}`, { method: "POST" });
+        const data = await res.json();
+        if (data.metrics) {
+            const m = data.metrics;
+            lastBacktestByMarket = data.by_market;
+            const rColor = m.total_r_gain >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+
+            let html = `
+                <div style="font-size:12px; margin-bottom:4px;">
+                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} BACKTEST ]:</strong>
+                    Trades: <strong>${m.total_trades}</strong> | 
+                    Win Rate: <strong style="color:var(--emerald-neon)">${m.win_rate}%</strong> | 
+                    Expectancy: <strong>${m.expectancy}R</strong> | 
+                    Profit Factor: <strong>${m.profit_factor}</strong> | 
+                    Total Gain: <strong style="color:${rColor}">${m.total_r_gain > 0 ? '+' : ''}${m.total_r_gain}R</strong> | 
+                    Max DD: <strong>${m.max_drawdown_r}R</strong>
+                </div>
+            `;
+
+            if (data.by_market && Object.keys(data.by_market).length > 0) {
+                html += `<div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:12px; font-size:10px; border-top:1px solid rgba(255,255,255,0.1); padding-top:6px;">`;
+                for (const [sym, bm] of Object.entries(data.by_market)) {
+                    const bmColor = bm.total_r >= 0 ? "var(--emerald-neon)" : "var(--rose-neon)";
+                    const isSelected = sym === currentSymbol;
+                    html += `
+                        <div style="${isSelected ? 'background:rgba(0,240,255,0.15); padding:2px 6px; border-radius:4px; border:1px solid var(--cyan-neon);' : ''}">
+                            <strong style="color:${isSelected ? 'var(--cyan-neon)' : '#fff'};">${sym}:</strong> 
+                            ${bm.trades} trds | 
+                            WR: <strong style="color:var(--emerald-neon);">${bm.win_rate}%</strong> | 
+                            Gain: <strong style="color:${bmColor};">${bm.total_r > 0 ? '+' : ''}${bm.total_r}R</strong> | 
+                            PF: ${bm.profit_factor}
+                        </div>
+                    `;
+                }
+                html += `</div>`;
+            }
+
+            content.innerHTML = html;
+            SoundFX.radarPing();
+
+            if (data.model_stats) {
+                renderModelStats(data.model_stats);
+            }
+        }
+    } catch (e) {
+        content.textContent = "Error executing backtest: " + e;
+    }
+}
+
+async function runValidation() {
+    const box = document.getElementById("backtest-summary-box");
+    const content = document.getElementById("backtest-summary-content");
+    box.style.display = "block";
+    content.innerHTML = `<em>Running In-Sample (70%) vs Out-of-Sample (30%) validation for <strong>${currentSymbol}</strong>...</em>`;
+
+    try {
+        const res = await fetch(`/api/backtest/validate?symbol=${currentSymbol}`, { method: "POST" });
+        const data = await res.json();
+        if (data.retention) {
+            content.innerHTML = `
+                <div style="font-size:12px; margin-bottom:4px;">
+                    <strong style="color:var(--cyan-neon);">[ ${data.selected_symbol} VALIDATION ]:</strong>
+                    In-Sample Trades: <strong>${data.in_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.in_sample_metrics.win_rate}%</strong>)<br>
+                    Out-of-Sample Trades: <strong>${data.out_of_sample_trades}</strong> (WR: <strong style="color:var(--emerald-neon);">${data.out_of_sample_metrics.win_rate}%</strong>)<br>
+                    Win Rate Retention: <strong>${data.retention.win_rate_retention_pct}%</strong> | 
+                    Robust Institutional Edge: <strong style="color:${data.is_robust ? 'var(--emerald-neon)' : 'var(--amber-neon)'}">${data.is_robust ? 'CONFIRMED' : 'REFINING'}</strong>
+                </div>
+            `;
+            SoundFX.radarPing();
+        }
+    } catch (e) {
+        content.textContent = "Error executing validation: " + e;
+    }
+}
+
+async function simulateSetup(dir) {
+    requireAdminPin(async (pin) => {
+        try {
+            const modelEl = document.getElementById("select-test-model");
+            const modelId = modelEl ? modelEl.value : "MODEL_10";
+            const res = await fetch(`/api/simulate_setup?symbol=${currentSymbol}&direction=${dir}&model_id=${modelId}&force=true`, {
+                method: "POST",
+                headers: { "X-Admin-PIN": pin }
+            });
+            if (res.status === 401) {
+                setStoredPin("");
+                alert("❌ Unauthorized: Invalid Admin PIN. Please authenticate.");
+                openPinModal(() => simulateSetup(dir));
+                return;
+            }
+            await res.json();
+            SoundFX.tradeEntry();
+            fetchStatus();
+            fetchCoinAnalysis(currentSymbol);
+        } catch (e) {
+            console.error("Simulation error", e);
+        }
+    });
 }
 
 async function triggerBreakeven() {
@@ -1263,6 +1617,7 @@ async function triggerBreakeven() {
                 return;
             }
             const data = await res.json();
+            SoundFX.targetHit();
             alert(data.message || "Breakeven applied.");
             fetchStatus();
         } catch (e) {
@@ -1285,6 +1640,7 @@ async function triggerPartial() {
                 return;
             }
             const data = await res.json();
+            SoundFX.targetHit();
             alert(data.message || "Partial profit secured.");
             fetchStatus();
         } catch (e) {
@@ -1311,6 +1667,7 @@ async function toggleBotPower() {
                 return;
             }
             const data = await res.json();
+            SoundFX.alertWarning();
             alert(data.message || "State updated.");
             await fetchStatus();
         } catch (e) {
@@ -1320,4 +1677,3 @@ async function toggleBotPower() {
         }
     });
 }
-
