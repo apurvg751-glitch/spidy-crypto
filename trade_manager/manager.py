@@ -557,7 +557,15 @@ class TradeManager:
             status=new_status,
             price=price,
             setup_id=self.active_trade["setup_id"],
-            details=details
+            details=details,
+            entry=self.active_trade.get("entry"),
+            stop_loss=self.active_trade.get("stop_loss"),
+            position_units=self.active_trade.get("position_units"),
+            margin_used=self.active_trade.get("margin_used"),
+            leverage=self.active_trade.get("leverage"),
+            target_1=self.active_trade.get("target_1"),
+            target_2=self.active_trade.get("target_2"),
+            htf_walls=self.active_trade.get("htf_walls") or self.active_trade.get("htf_barriers")
         )
         self._notify_state_change()
 

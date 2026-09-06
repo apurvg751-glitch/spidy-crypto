@@ -188,6 +188,35 @@ def get_system_status() -> dict[str, Any]:
     }
 
 
+async def check_daily_executive_brief_dispatch():
+    """
+    Automated 11:59 PM IST Daily Executive PnL Brief dispatch.
+    Fires once per day in the 23:58-23:59 IST window.
+    """
+    try:
+        from datetime import datetime, timezone, timedelta
+        now_ist = datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)
+        today_ist = now_ist.strftime("%Y-%m-%d")
+
+        if now_ist.hour == 23 and now_ist.minute >= 58:
+            if trade_manager and trade_manager.db:
+                last_brief = trade_manager.db.get_config("daily_brief_date", "")
+                if last_brief != today_ist:
+                    logger.info(f"🌙 Triggering 11:59 PM IST Daily Executive Brief for {today_ist}...")
+                    current_loss = getattr(trade_manager, "current_daily_loss", 0.0)
+                    max_loss = getattr(settings, "MAX_DAILY_LOSS", 420.0)
+                    sent = await telegram.send_daily_executive_recap(
+                        target_date=today_ist,
+                        current_daily_loss=current_loss,
+                        max_daily_loss=max_loss
+                    )
+                    if sent:
+                        trade_manager.db.set_config("daily_brief_date", today_ist)
+                        logger.info(f"🌙 11:59 PM IST Daily Executive Brief dispatched for {today_ist}.")
+    except Exception as e:
+        logger.error(f"Error checking daily executive brief dispatch: {e}")
+
+
 async def background_scanner_loop():
     """Periodic background scan every 10 seconds with 11:59 PM IST daily loss rollover check."""
     while True:
@@ -195,6 +224,7 @@ async def background_scanner_loop():
             await asyncio.sleep(10)
             if trade_manager:
                 trade_manager.check_daily_loss_reset()
+                await check_daily_executive_brief_dispatch()
             if trade_manager and getattr(trade_manager, "is_paused", False):
                 continue
             await run_market_scan()

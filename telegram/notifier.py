@@ -4,7 +4,7 @@ import httpx
 
 from config.settings import settings
 from storage.database import Database
-from .formatter import format_main_alert, format_lifecycle_alert
+from telegram.formatter import format_main_alert, format_lifecycle_alert, format_daily_executive_brief
 
 logger = logging.getLogger("spidy.telegram")
 
@@ -23,6 +23,26 @@ def get_trade_inline_keyboard() -> dict[str, Any]:
             ],
             [
                 {"text": "📖 Daily Trade Journal", "callback_data": "CMD_JOURNAL"}
+            ]
+        ]
+    }
+
+
+def get_hud_inline_keyboard() -> dict[str, Any]:
+    """Master 6-button HUD interactive keyboard."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🎯 Breakeven", "callback_data": "CMD_BE"},
+                {"text": "💰 50% Partial", "callback_data": "CMD_PARTIAL"}
+            ],
+            [
+                {"text": "🛑 Emergency Exit", "callback_data": "CMD_CLOSE"},
+                {"text": "⚡ Scan All (9 Models)", "callback_data": "CMD_SCAN"}
+            ],
+            [
+                {"text": "📈 View Chart", "callback_data": "CMD_CHART"},
+                {"text": "🔄 Refresh HUD", "callback_data": "CMD_HUD_REFRESH"}
             ]
         ]
     }
@@ -56,7 +76,7 @@ class TelegramNotifier:
             return False
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        keyboard = reply_markup if reply_markup is not None else get_trade_inline_keyboard()
+        keyboard = reply_markup if reply_markup is not None else get_hud_inline_keyboard()
         payload = {
             "chat_id": self.chat_id,
             "text": text,
@@ -118,14 +138,13 @@ class TelegramNotifier:
             return await self.send_message(caption, reply_markup=keyboard)
 
     async def send_trade_detected_alert(self, setup_dict: dict[str, Any]) -> bool:
-        """Sends primary trade detection alert with interactive control buttons."""
+        """Sends primary trade detection alert with interactive control buttons and HTF White Line chart."""
         setup_id = setup_dict.get("id")
         coin = setup_dict.get("coin", "")
 
         if not setup_id:
             return False
 
-        # Anti-spam: check if this setup was already alerted
         alert_id = f"MAIN_{setup_id}"
         if self.db.is_alert_sent(alert_id):
             logger.info(f"Duplicate alert blocked by anti-spam guard: {alert_id}")
@@ -134,9 +153,10 @@ class TelegramNotifier:
         message = format_main_alert(setup_dict)
         buttons = get_trade_inline_keyboard()
 
-        # Generate and deliver HD Candlestick Chart
+        # Generate and deliver HD Candlestick Chart with ⚪ HTF White Line
         try:
             from telegram.chart_generator import generate_trade_chart
+            htf_walls = setup_dict.get("htf_walls") or setup_dict.get("htf_barriers")
             chart_bytes = generate_trade_chart(
                 symbol=coin,
                 direction=setup_dict.get("direction", "LONG"),
@@ -144,14 +164,14 @@ class TelegramNotifier:
                 stop_loss=float(setup_dict.get("stop_loss", 0.0)),
                 target_1=float(setup_dict.get("target_1", 0.0)),
                 target_2=float(setup_dict.get("target_2", 0.0)),
-                candles=setup_dict.get("candles")
+                candles=setup_dict.get("candles"),
+                htf_walls=htf_walls
             )
             success = await self.send_photo(photo_bytes=chart_bytes, caption=message, reply_markup=buttons)
         except Exception as e:
             logger.warning(f"Chart generation error, delivering text alert: {e}")
             success = await self.send_message(message, reply_markup=buttons)
 
-        # Mark sent in DB whether delivered or simulated so it never spams
         self.db.record_alert_sent(alert_id, coin, "MAIN_ALERT")
         return success
 
@@ -169,9 +189,13 @@ class TelegramNotifier:
         stop_loss: Optional[float] = None,
         position_units: Optional[float] = None,
         margin_used: Optional[float] = None,
-        leverage: Optional[int] = None
+        leverage: Optional[int] = None,
+        target_1: Optional[float] = None,
+        target_2: Optional[float] = None,
+        candles: Optional[list] = None,
+        htf_walls: Optional[list] = None
     ) -> bool:
-        """Sends lifecycle status updates (ACTIVE, TARGET HIT, STOPPED, CANCELLED, COMPLETED, TRAILING_STOP)."""
+        """Sends lifecycle status updates with progress bar and auto-chart snapshot on ACTIVE trade trigger."""
         alert_id = f"{status}_{setup_id}"
         if self.db.is_alert_sent(alert_id):
             logger.info(f"Duplicate lifecycle alert blocked: {alert_id}")
@@ -189,10 +213,31 @@ class TelegramNotifier:
             stop_loss=stop_loss,
             position_units=position_units,
             margin_used=margin_used,
-            leverage=leverage
+            leverage=leverage,
+            target_1=target_1
         )
-        buttons = get_trade_inline_keyboard()
-        success = await self.send_message(message, reply_markup=buttons)
+        buttons = get_hud_inline_keyboard() if status == "ACTIVE" else get_trade_inline_keyboard()
+
+        # On trade activation, send auto-chart snapshot
+        if status == "ACTIVE" and entry and stop_loss and target_1:
+            try:
+                from telegram.chart_generator import generate_trade_chart
+                chart_bytes = generate_trade_chart(
+                    symbol=coin,
+                    direction=direction,
+                    entry=float(entry),
+                    stop_loss=float(stop_loss),
+                    target_1=float(target_1),
+                    target_2=float(target_2 or target_1),
+                    candles=candles,
+                    htf_walls=htf_walls
+                )
+                success = await self.send_photo(photo_bytes=chart_bytes, caption=message, reply_markup=buttons)
+            except Exception as e:
+                logger.warning(f"Active chart generation error, falling back to text: {e}")
+                success = await self.send_message(message, reply_markup=buttons)
+        else:
+            success = await self.send_message(message, reply_markup=buttons)
 
         self.db.record_alert_sent(alert_id, coin, status)
         return success
@@ -222,7 +267,46 @@ class TelegramNotifier:
             f"• *Protective Shield*: Stop Loss moved to `{stop_str}` (Risk-Free)\n\n"
             f"⚡ _The remaining {remaining_pct}% is running risk-free toward Target 2 / higher targets._"
         )
-        buttons = get_trade_inline_keyboard()
+        buttons = get_hud_inline_keyboard()
         return await self.send_message(msg, reply_markup=buttons)
 
+    async def send_daily_executive_recap(
+        self,
+        target_date: Optional[str] = None,
+        current_daily_loss: float = 0.0,
+        max_daily_loss: float = 420.0
+    ) -> bool:
+        """Sends the automated 11:59 PM IST Daily Executive Briefing."""
+        try:
+            from journal.trade_journal import TradeJournalEngine
+            data = TradeJournalEngine.get_daily_trades(target_date)
+            msg = format_daily_executive_brief(data, current_daily_loss=current_daily_loss, max_daily_loss=max_daily_loss)
+            return await self.send_message(msg, reply_markup=get_hud_inline_keyboard())
+        except Exception as e:
+            logger.error(f"Failed to generate daily executive brief: {e}")
+            return False
 
+    async def send_chart_snapshot(
+        self,
+        symbol: str,
+        current_price: float,
+        candles: Optional[list] = None,
+        htf_walls: Optional[list] = None,
+        active_trade: Optional[dict] = None,
+        caption: str = ""
+    ) -> bool:
+        """Sends on-demand institutional chart snapshot for `/chart` command."""
+        try:
+            from telegram.chart_generator import generate_symbol_analysis_chart
+            chart_bytes = generate_symbol_analysis_chart(
+                symbol=symbol,
+                current_price=current_price,
+                candles=candles,
+                htf_walls=htf_walls,
+                active_trade=active_trade
+            )
+            buttons = get_hud_inline_keyboard()
+            return await self.send_photo(photo_bytes=chart_bytes, caption=caption, reply_markup=buttons)
+        except Exception as e:
+            logger.error(f"Failed to render/send chart snapshot: {e}")
+            return False
