@@ -20,21 +20,32 @@ def test_position_sizing_margin_cap():
 
 
 def test_daily_loss_and_consecutive_losses_guard():
-    """Validates that excessive daily loss or consecutive losses block new trades."""
-    # Exceeded daily loss
+    """Validates that daily loss and consecutive losses no longer block trades by default, but can be configured."""
+    # 1. By default, SPIDY does NOT halt for daily loss or 3 consecutive losses
+    res_default = PositionSizer.calculate_position(
+        entry=2400.0,
+        stop_loss=2380.0,
+        current_daily_loss=2000.0,
+        consecutive_losses=5
+    )
+    assert res_default.is_allowed is True
+
+    # 2. When explicit max_daily_loss is provided, it can be enforced
     res_daily = PositionSizer.calculate_position(
         entry=2400.0,
         stop_loss=2380.0,
-        current_daily_loss=2000.0 # > 1750.0 max daily loss
+        current_daily_loss=2000.0,
+        max_daily_loss=500.0
     )
     assert res_daily.is_allowed is False
     assert "daily loss" in res_daily.rejection_reason.lower()
 
-    # Exceeded consecutive losses
+    # 3. When explicit max_consecutive_losses is provided, it can be enforced
     res_consec = PositionSizer.calculate_position(
         entry=2400.0,
         stop_loss=2380.0,
-        consecutive_losses=3 # >= 3 max consecutive losses
+        consecutive_losses=3,
+        max_consecutive_losses=3
     )
     assert res_consec.is_allowed is False
     assert "consecutive losses" in res_consec.rejection_reason.lower()

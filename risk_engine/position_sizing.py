@@ -38,7 +38,9 @@ class PositionSizer:
         current_daily_loss: float = 0.0,
         consecutive_losses: int = 0,
         last_trade_close_time: int = 0,
-        cooldown_seconds: Optional[int] = None
+        cooldown_seconds: Optional[int] = None,
+        max_daily_loss: Optional[float] = None,
+        max_consecutive_losses: Optional[int] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
@@ -47,18 +49,20 @@ class PositionSizer:
         cooldown = cooldown_seconds if cooldown_seconds is not None else settings.COOLDOWN_SECONDS
         now = int(time.time())
 
-        # 1. Daily Loss Guard
-        if current_daily_loss >= settings.MAX_DAILY_LOSS:
+        # 1. Daily Loss Guard (Disabled per user configuration)
+        daily_limit = max_daily_loss if max_daily_loss is not None else (settings.MAX_DAILY_LOSS if getattr(settings, "ENABLE_DAILY_LOSS_LIMIT", False) else None)
+        if daily_limit is not None and current_daily_loss >= daily_limit:
             return PositionSizeResult(
                 is_allowed=False,
-                rejection_reason=f"Max daily loss reached ({current_daily_loss:.2f} >= {settings.MAX_DAILY_LOSS:.2f})"
+                rejection_reason=f"Max daily loss reached ({current_daily_loss:.2f} >= {daily_limit:.2f})"
             )
 
-        # 2. Consecutive Losses Guard
-        if consecutive_losses >= settings.MAX_CONSECUTIVE_LOSSES:
+        # 2. Consecutive Losses Guard (Disabled per user configuration)
+        consec_limit = max_consecutive_losses if max_consecutive_losses is not None else (settings.MAX_CONSECUTIVE_LOSSES if getattr(settings, "ENABLE_CONSECUTIVE_LOSS_LIMIT", False) else None)
+        if consec_limit is not None and consecutive_losses >= consec_limit:
             return PositionSizeResult(
                 is_allowed=False,
-                rejection_reason=f"Max consecutive losses reached ({consecutive_losses} >= {settings.MAX_CONSECUTIVE_LOSSES})"
+                rejection_reason=f"Max consecutive losses reached ({consecutive_losses} >= {consec_limit})"
             )
 
         # 3. Cooldown Guard
