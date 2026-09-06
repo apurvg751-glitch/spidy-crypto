@@ -21,11 +21,11 @@ def test_position_sizing_margin_cap():
 
 def test_daily_loss_and_consecutive_losses_guard():
     """Validates that daily loss is active by default, while consecutive loss halts remain disabled."""
-    # 1. By default, SPIDY DOES halt if daily loss exceeds MAX_DAILY_LOSS (500.0)
+    # 1. By default, SPIDY DOES halt if daily loss exceeds MAX_DAILY_LOSS (420.0)
     res_daily_blocked = PositionSizer.calculate_position(
         entry=2400.0,
         stop_loss=2380.0,
-        current_daily_loss=600.0,
+        current_daily_loss=450.0,
         consecutive_losses=0
     )
     assert res_daily_blocked.is_allowed is False
