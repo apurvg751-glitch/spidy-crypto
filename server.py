@@ -332,6 +332,25 @@ async def get_cloud_ip():
         return {"error": str(e)}
 
 
+@app.get("/api/test_delta_auth")
+async def test_delta_auth():
+    """Tests Delta Exchange India authenticated API connection directly from this server."""
+    from market_data.delta_execution import DeltaExecutionClient
+    client = DeltaExecutionClient()
+    try:
+        balances = await client.get_wallet_balances()
+        pids = await client.init_product_ids()
+        return {
+            "status": "success" if balances.get("success") else "error",
+            "balances": balances,
+            "mapped_products": {k: v for k, v in pids.items() if k in ("ETHUSD", "XRPUSD", "AVAXUSD", "BTCUSD")}
+        }
+    except Exception as e:
+        return {"status": "exception", "error": str(e)}
+    finally:
+        await client.close()
+
+
 @app.get("/api/performance")
 async def api_performance():
     """Returns official verified institutional track record and performance metrics."""

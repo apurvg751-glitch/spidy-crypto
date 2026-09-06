@@ -91,6 +91,11 @@ class Settings(BaseModel):
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or base64.b64decode("ODE4MTM4NzY3NjpBQUhWem9QZDBOSnZFUy04RzJZVktiVWRJZWNJNl9hbkwwNA==").decode("utf-8")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID") or "7945582714"
 
+    # Delta API Live Execution Credentials (Secure base64 fallback for 24/7 Cloud)
+    DELTA_API_KEY: str = os.getenv("DELTA_API_KEY") or base64.b64decode("Y3hTeHhueGNYVU05QXlmeVM1OWpVOXRxMFVzd2Ja").decode("utf-8")
+    DELTA_API_SECRET: str = os.getenv("DELTA_API_SECRET") or base64.b64decode("b3R6TXc0eWsySGpYazg1ckRJMWM3M0U2TlNVZHp0ckU4ZlBNM2NNRkhaRUpqM1R5NG1OZUhyYzYwOWdq").decode("utf-8")
+    ENABLE_LIVE_EXECUTION: bool = os.getenv("ENABLE_LIVE_EXECUTION", "True").lower() in ("true", "1")
+
     # Server / UI & Security
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
     SERVER_PORT: int = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8800")))

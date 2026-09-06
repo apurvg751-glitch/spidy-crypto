@@ -44,6 +44,15 @@ class TradeManager:
         self.global_status: str = "WATCHING"
         self.is_paused: bool = False
 
+        # Live Delta Execution Gateway
+        self.delta_execution = None
+        if getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+            try:
+                from market_data.delta_execution import DeltaExecutionClient
+                self.delta_execution = DeltaExecutionClient()
+            except Exception as e:
+                logger.warning(f"Could not initialize DeltaExecutionClient: {e}")
+
         # Portfolio Safeguard State & IST 11:59 PM Midnight Rollover
         from datetime import datetime, timezone, timedelta
         self.ist_tz = timezone(timedelta(hours=5, minutes=30))
@@ -353,6 +362,10 @@ class TradeManager:
             self.global_status = "ACTIVE"
             logger.info(f"Selected and activated new trade: {winner.coin} {winner.direction} [{active_record['model_name']}] (Score: {winner.setup_score}, Margin: ₹{pos_calc.required_margin})")
 
+            # Live Delta Exchange Order Execution
+            if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+                asyncio.create_task(self._submit_live_order(winner, pv))
+
             # Dispatch primary Telegram Alert (enriched with Delta specs)
             winner_dict["point_val_inr"] = pv.point_value_inr
             winner_dict["point_val_usd"] = pv.point_value_usd
@@ -363,6 +376,33 @@ class TradeManager:
 
             self._notify_state_change()
             return active_record
+
+    async def _submit_live_order(self, setup: Any, pv: Any):
+        """Dispatches live limit entry order and bracket protection to Delta Exchange India."""
+        try:
+            side = "buy" if setup.direction.upper() == "LONG" else "sell"
+            size = max(1, int(getattr(pv, "delta_contracts", 1)))
+            logger.info(f"🚀 [DELTA LIVE] Placing {setup.coin} {side.upper()} order: size={size}, limit={setup.entry}")
+            res = await self.delta_execution.place_order(
+                symbol=setup.coin,
+                side=side,
+                order_type="limit_order",
+                size=size,
+                limit_price=setup.entry
+            )
+            if res.get("success"):
+                order_id = res.get("order", {}).get("id")
+                logger.info(f"✅ [DELTA LIVE] Order submitted successfully to Delta India. Order ID: {order_id}")
+                # Submit bracket protection (SL & TP)
+                await self.delta_execution.place_bracket_order(
+                    symbol=setup.coin,
+                    stop_loss_price=setup.stop_loss,
+                    take_profit_price=setup.target_1
+                )
+            else:
+                logger.error(f"❌ [DELTA LIVE] Order placement failed on Delta India: {res.get('error')}")
+        except Exception as e:
+            logger.error(f"❌ [DELTA LIVE] Exception submitting live order: {e}")
 
     async def update_price(self, symbol: str, current_price: float):
         """Monitors incoming price ticks, updates MFE/MAE excursions, and drives state transitions."""
@@ -687,6 +727,22 @@ class TradeManager:
         except Exception as e:
             logger.error(f"Failed to register trade close in ReentryManager: {e}")
 
+        # Live Delta Execution Cleanup (Cancel orders & close position)
+        if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+            try:
+                contracts = max(1, int(self.active_trade.get("delta_contracts") or 1))
+                exit_side = "sell" if direction.upper() == "LONG" else "buy"
+                asyncio.create_task(self.delta_execution.cancel_all_orders(symbol=coin))
+                asyncio.create_task(self.delta_execution.place_order(
+                    symbol=coin,
+                    side=exit_side,
+                    order_type="market_order",
+                    size=contracts,
+                    reduce_only=True
+                ))
+            except Exception as e:
+                logger.error(f"Error executing live Delta cleanup on trade close: {e}")
+
         # Clear active trade from DB and memory -> Global Lock Released!
         self.db.clear_active_trade()
         self.active_trade = None
@@ -752,6 +808,18 @@ class TradeManager:
             self.active_trade["stop_loss"] = entry
             self.active_trade["be_moved"] = True
             self.db.set_active_trade(self.active_trade)
+
+            # Live Delta Breakeven Stop Adjustment
+            if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+                try:
+                    asyncio.create_task(self.delta_execution.place_bracket_order(
+                        symbol=coin,
+                        stop_loss_price=entry,
+                        take_profit_price=self.active_trade.get("target_1")
+                    ))
+                except Exception as e:
+                    logger.error(f"Error adjusting Delta bracket SL to breakeven: {e}")
+
             self._notify_state_change()
             return True, f"Stop Loss moved to Breakeven (${entry:,.2f}) for {coin}!"
 
