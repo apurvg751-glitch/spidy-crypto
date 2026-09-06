@@ -24,7 +24,11 @@ class FeedManager:
         on_candle_closed: Optional[Callable[[str, str, Candle], None]] = None,
         on_tick: Optional[Callable[[str, float], None]] = None
     ):
-        self.symbols = symbols or settings.SYMBOLS
+        # Always include BTCUSD in feeds as the Mother-Ship macro anchor
+        raw_symbols = list(symbols or settings.SYMBOLS)
+        if "BTCUSD" not in raw_symbols:
+            raw_symbols.append("BTCUSD")
+        self.symbols = raw_symbols
         self.on_candle_closed = on_candle_closed
         self.on_tick = on_tick
 
