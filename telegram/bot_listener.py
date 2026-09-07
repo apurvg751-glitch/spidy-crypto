@@ -91,16 +91,20 @@ class TelegramBotListener:
     async def _process_update(self, update: dict):
         """Processes an incoming Telegram update."""
         if "callback_query" in update:
-            cb = update["callback_query"]
-            cb_id = cb.get("id")
-            cb_data = cb.get("data")
-            msg_obj = cb.get("message", {})
-            msg_id = msg_obj.get("message_id")
-            chat_id = msg_obj.get("chat", {}).get("id", self.chat_id)
-            from_user = cb.get("from", {}).get("first_name", "Trader")
+            try:
+                cb = update["callback_query"]
+                cb_id = cb.get("id")
+                cb_data = cb.get("data")
+                msg_obj = cb.get("message") or {}
+                msg_id = msg_obj.get("message_id")
+                chat_data = msg_obj.get("chat") if isinstance(msg_obj.get("chat"), dict) else {}
+                chat_id = chat_data.get("id") or cb.get("from", {}).get("id") or self.chat_id
+                from_user = cb.get("from", {}).get("first_name", "Trader")
 
-            logger.info(f"Received Telegram Button Click: {cb_data} from {from_user} (chat {chat_id})")
-            await self._handle_callback(cb_id, cb_data, chat_id, msg_id=msg_id)
+                logger.info(f"Received Telegram Button Click: {cb_data} from {from_user} (chat {chat_id})")
+                await self._handle_callback(cb_id, cb_data, chat_id, msg_id=msg_id)
+            except Exception as e:
+                logger.error(f"Error handling Telegram callback: {e}")
 
         elif "message" in update and "text" in update["message"]:
             raw_text = update["message"]["text"].strip()
@@ -233,7 +237,10 @@ class TelegramBotListener:
         target_chat = chat_id or self.chat_id
 
         if cb_id:
-            asyncio.create_task(self._answer_callback(cb_id, "Processing request..."))
+            try:
+                await self._answer_callback(cb_id, "Processing request...")
+            except Exception:
+                pass
 
         reply_msg = ""
         try:
@@ -330,7 +337,7 @@ class TelegramBotListener:
                     "reply_markup": keyboard
                 }
                 res = await self.client.post(url, json=payload)
-                if res.status_code == 200:
+                if res.status_code == 200 or (res.status_code == 400 and "not modified" in res.text):
                     return
             except Exception as e:
                 logger.warning(f"Could not edit HUD message, sending new: {e}")
