@@ -34,12 +34,13 @@ class RiskEngine:
         entry = current_price
         
         # Adaptive buffer based on institutional setup grade
+        # Ensures structural invalidation stops (HH for short, LL for long) have a true micro-wick cushion
         if grade.upper() == "B+":
-            buffer = max(atr * 0.15, entry * 0.0002)  # Stricter tight SL
+            buffer = max(atr * 0.20, entry * 0.0008)  # Stricter tight SL with 0.08% / 0.20 ATR wick cushion
             t1_mult = 1.6                             # Quick TP (Min 1.6R)
             t2_mult = 1.8                             # Cautious T2
         else:
-            buffer = max(atr * 0.35, entry * 0.0005)  # Institutional standard buffer
+            buffer = max(atr * 0.35, entry * 0.0010)  # Institutional standard buffer (0.10% / 0.35 ATR cushion)
             t1_mult = 1.8                             # Standard T1
             t2_mult = 2.5                             # Full T2
 

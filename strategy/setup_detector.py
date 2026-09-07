@@ -392,7 +392,8 @@ class SetupDetector:
                     min_rr=1.6,
                     symbol=cand.coin,
                     candles_1h=market.candles_1h or [],
-                    candles_4h=market.candles_4h or []
+                    candles_4h=market.candles_4h or [],
+                    apply_front_run=True
                 )
 
                 # Dynamic SL Adjustment & Target Clearance:
@@ -412,7 +413,8 @@ class SetupDetector:
                         min_rr=1.6,
                         symbol=cand.coin,
                         candles_1h=market.candles_1h or [],
-                        candles_4h=market.candles_4h or []
+                        candles_4h=market.candles_4h or [],
+                        apply_front_run=True
                     )
                     if adaptive_snapped.has_minimum_clearance and adaptive_snapped.rr_1 >= 1.6:
                         cand.stop_loss = adaptive_sl

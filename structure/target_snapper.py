@@ -87,7 +87,8 @@ class TargetSnapper:
         min_rr: float = 1.6,
         symbol: str = "ETHUSD",
         candles_1h: List[Candle] | None = None,
-        candles_4h: List[Candle] | None = None
+        candles_4h: List[Candle] | None = None,
+        apply_front_run: bool = False
     ) -> SnappedTargets:
         risk = abs(entry - stop_loss)
         min_risk = max(entry * 0.0035, atr * 0.60) if atr > 0 else (entry * 0.0035)
@@ -113,7 +114,9 @@ class TargetSnapper:
             # 1. Look for physical swing highs at least min_t1_dist above entry
             potential_t1 = [h for h in highs if h >= entry + min_t1_dist]
             if potential_t1:
-                t1 = min(potential_t1)  # Nearest physical swing ceiling with adequate room
+                raw_swing = min(potential_t1)
+                # Front-run buffer: 0.08% beneath physical swing ceiling to guarantee execution
+                t1 = max(entry + min_t1_dist, (raw_swing * 0.9992) if apply_front_run else raw_swing)
                 t1_type = "PHYSICAL_SWING_HIGH"
             else:
                 t1 = entry + max(risk * 1.8, min_t1_dist)
@@ -122,7 +125,8 @@ class TargetSnapper:
             # 2. Look for Next Structural Higher High (HH) or Dealing Range Extreme for T2
             potential_t2 = [h for h in highs if h > t1 + (risk * 0.5)]
             if potential_t2:
-                t2 = min(potential_t2)
+                raw_swing_t2 = min(potential_t2)
+                t2 = max(t1 + (risk * 0.5), (raw_swing_t2 * 0.9992) if apply_front_run else raw_swing_t2)
                 t2_type = "STRUCTURAL_HIGHER_HIGH"
             elif dealing_range and dealing_range.range_high > t1 + (risk * 0.5):
                 t2 = round_price(symbol, dealing_range.range_high * 0.998)
@@ -162,7 +166,9 @@ class TargetSnapper:
             # 1. Look for physical swing lows at least min_t1_dist below entry
             potential_t1 = [l for l in lows if l <= entry - min_t1_dist]
             if potential_t1:
-                t1 = max(potential_t1)  # Nearest physical swing floor with adequate room
+                raw_swing = max(potential_t1)
+                # Front-run buffer: 0.08% above physical swing floor to guarantee execution
+                t1 = min(entry - min_t1_dist, (raw_swing * 1.0008) if apply_front_run else raw_swing)
                 t1_type = "PHYSICAL_SWING_LOW"
             else:
                 t1 = entry - max(risk * 1.8, min_t1_dist)
@@ -171,7 +177,8 @@ class TargetSnapper:
             # 2. Look for Next Structural Lower Low (LL) or Dealing Range Extreme for T2
             potential_t2 = [l for l in lows if l < t1 - (risk * 0.5)]
             if potential_t2:
-                t2 = max(potential_t2)
+                raw_swing_t2 = max(potential_t2)
+                t2 = min(t1 - (risk * 0.5), (raw_swing_t2 * 1.0008) if apply_front_run else raw_swing_t2)
                 t2_type = "STRUCTURAL_LOWER_LOW"
             elif dealing_range and dealing_range.range_low < t1 - (risk * 0.5):
                 t2 = round_price(symbol, dealing_range.range_low * 1.002)

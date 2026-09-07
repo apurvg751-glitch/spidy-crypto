@@ -84,6 +84,17 @@ class TradeManager:
                 f"🌅 11:59 PM IST Midnight Rollover: Daily loss reset from ₹{old_loss:.2f} to ₹0.00 "
                 f"for new trading day {today_ist}. Full ₹{settings.MAX_DAILY_LOSS:.2f} daily loss budget restored!"
             )
+            if self.telegram:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(self.telegram.send_midnight_rollover_recap(
+                        old_loss=old_loss,
+                        new_date=today_ist,
+                        max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 201.0),
+                        equity=getattr(settings, "ACCOUNT_EQUITY", 4140.0)
+                    ))
+                except RuntimeError:
+                    pass
             return True
         return False
 
@@ -380,6 +391,18 @@ class TradeManager:
     async def _submit_live_order(self, setup: Any, pv: Any):
         """Dispatches live hybrid market entry order and bracket protection to Delta Exchange India."""
         try:
+            # Pre-Flight Spread Guard (Max 12 bps = 0.12% spread)
+            if hasattr(self.delta_execution, "check_spread"):
+                try:
+                    res_spread = await self.delta_execution.check_spread(setup.coin, max_spread_bps=12.0)
+                    if isinstance(res_spread, (tuple, list)) and len(res_spread) == 3:
+                        spread_ok, spread_bps, spread_pct = res_spread
+                        if not spread_ok:
+                            logger.warning(f"⚠️ [DELTA SPREAD GUARD] Spread on {setup.coin} is wide ({spread_pct:.3f}% / {spread_bps} bps > 12 bps). Waiting 3s for book to normalize...")
+                            await asyncio.sleep(3.0)
+                except Exception as e:
+                    logger.warning(f"Could not perform spread check: {e}")
+
             side = "buy" if setup.direction.upper() == "LONG" else "sell"
             raw_contracts = getattr(pv, "delta_contracts", 1)
             size = max(1, int(round(raw_contracts)))
@@ -548,14 +571,30 @@ class TradeManager:
                     if current_r >= 1.0:
                         await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=current_r)
 
-                # 2b. Institutional Velocity & Stagnation Stop Engine (Guarded by ENABLE_TIME_BASED_STAGNATION)
-                # By default FALSE: prevents premature 60m breakeven moves and 90m scratch exits that suffocate trades.
-                if getattr(settings, "ENABLE_TIME_BASED_STAGNATION", False):
-                    now_ts = int(time.time())
-                    act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
-                    elapsed_seconds = now_ts - act_ts
-                    current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
+                # 2b. 35-Minute Time Stagnation Advisory Alert (Dead Trade Filter)
+                now_ts = int(time.time())
+                act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
+                elapsed_seconds = now_ts - act_ts
+                current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
 
+                # Advisory alert at 35 mins (7 closed 5m candles) if trade has not made directional progress
+                if elapsed_seconds >= 2100 and not self.active_trade.get("stagnation_alert_sent") and not self.active_trade.get("partial_closed"):
+                    if current_r < 0.50:
+                        self.active_trade["stagnation_alert_sent"] = True
+                        self.db.set_active_trade(self.active_trade)
+                        duration_mins = int(elapsed_seconds / 60)
+                        logger.info(f"35-Minute Stagnation Advisory triggered for {symbol}: held {duration_mins}m, current R={current_r:.2f}")
+                        if self.telegram:
+                            asyncio.create_task(self.telegram.send_stagnation_alert(
+                                symbol=symbol,
+                                direction=direction,
+                                duration_mins=duration_mins,
+                                current_r=round(current_r, 2),
+                                current_price=current_price
+                            ))
+
+                # Optional Hard Velocity & Stagnation Stop Engine (Guarded by ENABLE_TIME_BASED_STAGNATION)
+                if getattr(settings, "ENABLE_TIME_BASED_STAGNATION", False):
                     # If trade held > 60 mins without hitting +0.5R, ratchet Stop Loss to Breakeven
                     if elapsed_seconds >= 3600 and current_r < 0.50 and not self.active_trade.get("be_moved"):
                         fee_buf = 0.02 * risk if risk > 0 else 0.0
@@ -855,31 +894,42 @@ class TradeManager:
             "reentry_status": reentry_status
         }
 
-    async def move_to_breakeven(self) -> tuple[bool, str]:
-        """Manually moves the active trade's stop loss to entry price."""
+    async def move_to_breakeven(self, protect_fees: bool = False) -> tuple[bool, str]:
+        """Manually moves the active trade's stop loss to entry price (or fee-protected level if protect_fees=True)."""
         async with self._lock:
             if not self.active_trade:
                 return False, "No active trade to move to Breakeven."
 
-            entry = self.active_trade["entry"]
+            entry = float(self.active_trade["entry"])
             coin = self.active_trade["coin"]
-            self.active_trade["stop_loss"] = entry
+            direction = self.active_trade["direction"]
+            orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
+            risk = abs(entry - orig_stop)
+
+            if protect_fees:
+                fee_buf = max(0.05 * risk, entry * 0.0008) if risk > 0 else (entry * 0.0008)
+                be_level = round_price(coin, entry + fee_buf if direction == "LONG" else entry - fee_buf)
+            else:
+                be_level = entry
+
+            self.active_trade["stop_loss"] = be_level
             self.active_trade["be_moved"] = True
             self.db.set_active_trade(self.active_trade)
 
             # Live Delta Breakeven Stop Adjustment
             if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
                 try:
+                    runner_tp = self.active_trade.get("target_2") if self.active_trade.get("partial_closed") else self.active_trade.get("target_1")
                     asyncio.create_task(self.delta_execution.place_bracket_order(
                         symbol=coin,
-                        stop_loss_price=entry,
-                        take_profit_price=self.active_trade.get("target_1")
+                        stop_loss_price=be_level,
+                        take_profit_price=runner_tp
                     ))
                 except Exception as e:
                     logger.error(f"Error adjusting Delta bracket SL to breakeven: {e}")
 
             self._notify_state_change()
-            return True, f"Stop Loss moved to Breakeven (${entry:,.2f}) for {coin}!"
+            return True, f"Stop Loss moved to Fee-Protected Breakeven (${be_level:,.4f}) for {coin}!"
 
     async def sync_live_bracket(self) -> Dict[str, Any]:
         """Synchronizes live bracket order (SL & TP) on Delta Exchange for the current active trade."""
@@ -1006,8 +1056,8 @@ class TradeManager:
         realized_pnl_inr = round(closed_margin * leverage * pct_move, 2)
         self.active_trade["realized_partial_pnl"] = realized_pnl_inr
 
-        # 2. Ensure Stop Loss is moved to at least Breakeven + fee buffer (+0.05R)
-        fee_buf = 0.05 * risk if risk > 0 else 0.0
+        # 2. Ensure Stop Loss is moved to at least Breakeven + fee buffer (+0.08% / +0.05R)
+        fee_buf = max(0.05 * risk, entry * 0.0008) if risk > 0 else (entry * 0.0008)
         if direction == "LONG":
             be_sl = round_price(coin, entry + fee_buf)
             if self.active_trade["stop_loss"] < be_sl:

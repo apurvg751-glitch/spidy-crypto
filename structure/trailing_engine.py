@@ -73,7 +73,7 @@ class TrailingStopEngine:
             milestone_stop = entry + (0.5 * risk) if direction == "LONG" else entry - (0.5 * risk)
         elif achieved_r >= 0.8:
             locked_r = 0.05  # Break-Even + Fee Buffer
-            fee_buf = 0.05 * risk
+            fee_buf = max(0.05 * risk, entry * 0.0008)  # Guarantees >= 0.08% profit to cover Delta taker fee + spread
             milestone_stop = (entry + fee_buf) if direction == "LONG" else (entry - fee_buf)
 
         # 3. ATR Dynamic Trail (active once in >= 1.5R profit)
@@ -143,7 +143,10 @@ class TrailingStopEngine:
                 best_stop = current_stop
                 reason = "No change"
 
-            max_allowed_stop = current_price - breathing_room
+            if best_stop == milestone_stop:
+                max_allowed_stop = current_price - (entry * 0.0005)
+            else:
+                max_allowed_stop = current_price - breathing_room
             if best_stop > max_allowed_stop:
                 best_stop = max_allowed_stop
 
@@ -170,7 +173,10 @@ class TrailingStopEngine:
                 best_stop = current_stop
                 reason = "No change"
 
-            min_allowed_stop = current_price + breathing_room
+            if best_stop == milestone_stop:
+                min_allowed_stop = current_price + (entry * 0.0005)
+            else:
+                min_allowed_stop = current_price + breathing_room
             if best_stop < min_allowed_stop:
                 best_stop = min_allowed_stop
 

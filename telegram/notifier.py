@@ -314,3 +314,43 @@ class TelegramNotifier:
         except Exception as e:
             logger.error(f"Failed to render/send chart snapshot: {e}")
             return False
+
+    async def send_stagnation_alert(
+        self,
+        symbol: str,
+        direction: str,
+        duration_mins: int,
+        current_r: float,
+        current_price: float
+    ) -> bool:
+        """Sends an advisory warning when a trade consolidates for >35m without directional progress."""
+        r_str = f"+{current_r:.2f}R" if current_r >= 0 else f"{current_r:.2f}R"
+        msg = (
+            f"⏱️ *SPIDY CRYPTO — TIME STAGNATION WARNING* ⚠️\n\n"
+            f"• *Market*: `{symbol}` ({direction})\n"
+            f"• *Duration*: `{duration_mins} mins` in consolidation\n"
+            f"• *Current Price*: `${current_price:,.4f}`\n"
+            f"• *Current Return*: `{r_str}`\n\n"
+            f"💡 *Advisory*: Price has chopped for >{duration_mins}m without reaching TP1.\n"
+            f"Consider moving SL to Breakeven or closing manually if volume remains dry."
+        )
+        return await self.send_message(msg, reply_markup=get_hud_inline_keyboard())
+
+    async def send_midnight_rollover_recap(
+        self,
+        old_loss: float,
+        new_date: str,
+        max_daily_loss: float = 201.0,
+        equity: float = 4140.0
+    ) -> bool:
+        """Sends the clean 11:59 PM IST daily loss budget restoration recap."""
+        msg = (
+            f"🌅 *SPIDY CRYPTO — 11:59 PM IST MIDNIGHT ROLLOVER* 🔄\n\n"
+            f"• *Date*: `{new_date}` (IST)\n"
+            f"• *Previous Daily Loss*: `₹{old_loss:,.2f}` ➔ `₹0.00` (Reset)\n"
+            f"• *Daily Loss Budget Restored*: `₹{max_daily_loss:,.2f}` ✅\n"
+            f"• *Account Equity*: `₹{equity:,.2f}`\n"
+            f"• *System Status*: Ready for fresh A+ institutional setups 🎯"
+        )
+        return await self.send_message(msg, reply_markup=get_hud_inline_keyboard())
+

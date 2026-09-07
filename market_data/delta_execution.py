@@ -101,6 +101,32 @@ class DeltaExecutionClient:
             logger.error(f"Delta get_wallet_balances exception: {e}")
             return {"success": False, "error": str(e)}
 
+    async def check_spread(self, symbol: str, max_spread_bps: float = 12.0) -> tuple[bool, float, float]:
+        """
+        Pre-flight spread check.
+        Queries /v2/tickers/{symbol}. Computes spread = (ask - bid) / bid.
+        Returns (is_acceptable: bool, spread_bps: float, spread_pct: float).
+        If spread > max_spread_bps (e.g. 12 bps = 0.12%), returns False.
+        """
+        try:
+            path = f"/v2/tickers/{symbol}"
+            res = await self.client.get(f"{self.base_url}{path}")
+            if res.status_code == 200:
+                data = res.json()
+                result = data.get("result") or {}
+                quotes = result.get("quotes") or {}
+                best_bid = float(quotes.get("best_bid") or result.get("mark_price") or 0.0)
+                best_ask = float(quotes.get("best_ask") or result.get("mark_price") or 0.0)
+                if best_bid > 0 and best_ask > 0:
+                    spread = best_ask - best_bid
+                    spread_pct = (spread / best_bid) * 100.0
+                    spread_bps = spread_pct * 100.0
+                    is_acceptable = spread_bps <= max_spread_bps
+                    return is_acceptable, round(spread_bps, 2), round(spread_pct, 4)
+        except Exception as e:
+            logger.warning(f"Delta check_spread exception for {symbol}: {e}")
+        return True, 0.0, 0.0
+
     async def place_order(
         self,
         symbol: str,
