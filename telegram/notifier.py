@@ -4,7 +4,13 @@ import httpx
 
 from config.settings import settings
 from storage.database import Database
-from telegram.formatter import format_main_alert, format_lifecycle_alert, format_daily_executive_brief
+from telegram.formatter import (
+    format_main_alert,
+    format_lifecycle_alert,
+    format_daily_executive_brief,
+    format_vip_channel_alert,
+    format_vip_channel_lifecycle
+)
 
 logger = logging.getLogger("spidy.telegram")
 
@@ -59,10 +65,12 @@ class TelegramNotifier:
         self,
         bot_token: Optional[str] = None,
         chat_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
         db: Optional[Database] = None
     ):
         self.bot_token = bot_token or settings.TELEGRAM_BOT_TOKEN
         self.chat_id = chat_id or settings.TELEGRAM_CHAT_ID
+        self.channel_id = channel_id or getattr(settings, "TELEGRAM_CHANNEL_ID", "")
         self.db = db or Database()
         self.client = httpx.AsyncClient(verify=False, timeout=15.0)
 
@@ -72,6 +80,44 @@ class TelegramNotifier:
     @property
     def is_configured(self) -> bool:
         return bool(self.bot_token and self.chat_id)
+
+    async def broadcast_to_channel(self, text: str, photo_bytes: Optional[bytes] = None) -> bool:
+        """Broadcasts clean VIP signals directly to subscriber channel (no admin action buttons)."""
+        if not self.bot_token or not self.channel_id:
+            return False
+
+        try:
+            if photo_bytes:
+                import json
+                url = f"https://api.telegram.org/bot{self.bot_token}/sendPhoto"
+                data = {
+                    "chat_id": self.channel_id,
+                    "caption": text,
+                    "parse_mode": "Markdown"
+                }
+                files = {"photo": ("vip_chart.png", photo_bytes, "image/png")}
+                res = await self.client.post(url, data=data, files=files)
+                if res.status_code == 200:
+                    logger.info("VIP Channel chart signal broadcasted successfully.")
+                    return True
+                logger.warning(f"VIP channel sendPhoto failed ({res.status_code}): {res.text}. Falling back to text.")
+
+            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+            payload = {
+                "chat_id": self.channel_id,
+                "text": text,
+                "parse_mode": "Markdown",
+                "disable_web_page_preview": True
+            }
+            res = await self.client.post(url, json=payload)
+            if res.status_code == 200:
+                logger.info("VIP Channel text signal broadcasted successfully.")
+                return True
+            logger.warning(f"VIP Channel sendMessage returned HTTP {res.status_code}: {res.text}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to broadcast to VIP channel: {e}")
+            return False
 
     async def send_message(self, text: str, reply_markup: Optional[dict[str, Any]] = None) -> bool:
         """Sends raw markdown/text message to the configured Telegram chat with optional buttons."""
@@ -176,6 +222,17 @@ class TelegramNotifier:
             logger.warning(f"Chart generation error, delivering text alert: {e}")
             success = await self.send_message(message, reply_markup=buttons)
 
+        # Broadcast clean VIP signal card to Subscriber Channel
+        if self.channel_id:
+            try:
+                vip_text = format_vip_channel_alert(setup_dict)
+                await self.broadcast_to_channel(
+                    text=vip_text,
+                    photo_bytes=locals().get("chart_bytes")
+                )
+            except Exception as e:
+                logger.warning(f"Error broadcasting to VIP channel: {e}")
+
         self.db.record_alert_sent(alert_id, coin, "MAIN_ALERT")
         return success
 
@@ -242,6 +299,21 @@ class TelegramNotifier:
                 success = await self.send_message(message, reply_markup=buttons)
         else:
             success = await self.send_message(message, reply_markup=buttons)
+
+        # Broadcast milestone updates to Subscriber Channel
+        if self.channel_id and status in ("BREAKEVEN", "TP1_HIT", "PARTIAL_TP", "TARGET_1", "TP2_HIT", "TARGET_2", "CLOSED"):
+            try:
+                vip_update = format_vip_channel_lifecycle(
+                    coin=coin,
+                    direction=direction,
+                    status=status,
+                    price=price,
+                    achieved_r=achieved_r,
+                    details=details
+                )
+                await self.broadcast_to_channel(vip_update)
+            except Exception as e:
+                logger.warning(f"Error broadcasting lifecycle update to VIP channel: {e}")
 
         self.db.record_alert_sent(alert_id, coin, status)
         return success

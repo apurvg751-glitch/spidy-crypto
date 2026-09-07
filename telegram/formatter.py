@@ -382,3 +382,102 @@ def format_daily_executive_brief(
         "🤖 *SPIDY 24/7 SCANNER ARMED FOR NEXT SESSION (1:30 AM IST)!* 🚀"
     ]
     return "\n".join(lines)
+
+
+def format_vip_channel_alert(setup: dict[str, Any]) -> str:
+    """
+    Formats an institutional VIP signal broadcast for paying subscribers.
+    Clean, actionable, and free from internal admin commands or private wallet balances.
+    """
+    coin = setup.get("coin", "UNKNOWN")
+    direction = setup.get("direction", "UNKNOWN")
+    grade = setup.get("grade", "A+")
+    grade_emoji = "🌟" if grade == "A+" else "⚡"
+    dir_emoji = "🟢 LONG" if direction.upper() == "LONG" else "🔴 SHORT"
+
+    prec = get_symbol_precision(coin)
+    entry = setup.get("entry", 0.0)
+    stop = setup.get("stop_loss", 0.0)
+    t1 = setup.get("target_1", 0.0)
+    t2 = setup.get("target_2", 0.0)
+    rr = setup.get("rr", 0.0)
+
+    bias_4h = setup.get("macro_bias_4h", "Bullish")
+    trend_1h = setup.get("trend_1h", "Bullish")
+
+    lines = [
+        "💎 *SPIDY VIP INSTITUTIONAL SIGNAL* 💎",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        f"📊 *Asset*: #{coin}",
+        f"🧭 *Direction*: *{dir_emoji}*",
+        f"🎖️ *Grade*: *{grade_emoji} GRADE {grade}*",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        f"📍 *Entry Price*: `${float(entry):.{prec}f}`",
+        f"🛑 *Stop Loss (Invalidation)*: `${float(stop):.{prec}f}`",
+        f"🎯 *Target 1 (1.6R-1.8R)*: `${float(t1):.{prec}f}`",
+        f"🚀 *Target 2 (Runner)*: `${float(t2):.{prec}f}`",
+        f"⚖️ *Risk / Reward*: *1:{rr:.1f}*",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "🧠 *Institutional Confluences*:",
+        f"• Macro 4H Context: *{bias_4h}*",
+        f"• 1H Market Structure: *{trend_1h}*",
+        "• Smart Money Setup: *Confirmed Liquidity Sweep*",
+        "━━━━━━━━━━━━━━━━━━━━━",
+        "⚠️ *Risk Notice*: Always manage your position size according to your personal risk management rules."
+    ]
+    return "\n".join(lines)
+
+
+def format_vip_channel_lifecycle(
+    coin: str,
+    direction: str,
+    status: str,
+    price: float,
+    achieved_r: Optional[float] = None,
+    details: str = ""
+) -> str:
+    """
+    Formats VIP channel updates when trades hit Breakeven, TP1, or Close.
+    """
+    prec = get_symbol_precision(coin)
+    dir_emoji = "🟢 LONG" if direction.upper() == "LONG" else "🔴 SHORT"
+
+    if status == "BREAKEVEN":
+        return (
+            f"🛡️ *SPIDY VIP UPDATE — BREAKEVEN LOCKED* 🛡️\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Asset: #{coin} ({dir_emoji})\n"
+            f"Status: *RISK REMOVED (0 RISK)* 🔒\n"
+            f"Current Price: `${price:.{prec}f}`\n\n"
+            f"✅ *Action*: Move Stop Loss to Entry Price immediately. This trade cannot lose money!"
+        )
+    elif status in ("TP1_HIT", "PARTIAL_TP", "TARGET_1"):
+        r_text = f"+{achieved_r:.2f}R" if achieved_r else "1.6R - 1.8R"
+        return (
+            f"🎯 *SPIDY VIP UPDATE — TARGET 1 HIT!* 🎯\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Asset: #{coin} ({dir_emoji})\n"
+            f"Milestone: *TARGET 1 REACHED ({r_text})* 💰\n"
+            f"Exit Price: `${price:.{prec}f}`\n\n"
+            f"🔥 *Action*: Secure 50% profits now. Move Stop Loss to Breakeven for remaining runner!"
+        )
+    elif status in ("TP2_HIT", "TARGET_2"):
+        r_text = f"+{achieved_r:.2f}R" if achieved_r else "2.5R+"
+        return (
+            f"🏆 *SPIDY VIP UPDATE — FULL TARGET 2 SMASHED!* 🏆\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Asset: #{coin} ({dir_emoji})\n"
+            f"Result: *MAX TARGET HIT ({r_text})* 🚀💰\n"
+            f"Exit Price: `${price:.{prec}f}`\n\n"
+            f"🎉 Trade fully completed with maximum institutional profits!"
+        )
+    elif status == "CLOSED":
+        return (
+            f"📊 *SPIDY VIP UPDATE — TRADE COMPLETED* 📊\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Asset: #{coin} ({dir_emoji})\n"
+            f"Closed At: `${price:.{prec}f}`\n"
+            f"Note: {details or 'Trade exited based on market structure update.'}"
+        )
+    return f"ℹ️ *SPIDY VIP UPDATE*: #{coin} status updated to *{status}* at `${price:.{prec}f}`."
+

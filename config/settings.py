@@ -92,6 +92,7 @@ class Settings(BaseModel):
     # Telegram Credentials (Safe Cloud Fallback)
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or base64.b64decode("ODE4MTM4NzY3NjpBQUhWem9QZDBOSnZFUy04RzJZVktiVWRJZWNJNl9hbkwwNA==").decode("utf-8")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID") or "7945582714"
+    TELEGRAM_CHANNEL_ID: str = os.getenv("TELEGRAM_CHANNEL_ID") or "@spidy_crypto_vip"
 
     # Delta API Live Execution Credentials (Secure base64 fallback for 24/7 Cloud)
     DELTA_API_KEY: str = os.getenv("DELTA_API_KEY") or base64.b64decode("Y3hTeHhueGNYVU05QXlmeVM1OWpVOXRxMFVzd2Ja").decode("utf-8")
