@@ -267,6 +267,10 @@ async def lifespan(app: FastAPI):
     scan_task = asyncio.create_task(background_scanner_loop())
     keepalive_task = asyncio.create_task(render_keepalive_loop())
 
+    # Sync live bracket protection to Delta if active trade is active
+    if trade_manager.active_trade and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+        asyncio.create_task(trade_manager.sync_live_bracket())
+
     # Telegram interactive polling (Runs 24/7 on primary cloud node)
     bot_listener = None
     listener_task = None
@@ -962,6 +966,15 @@ async def api_breakeven():
     success, msg = await trade_manager.move_to_breakeven()
     await broadcast_full_status()
     return {"status": "success" if success else "failed", "message": msg}
+
+
+@app.post("/api/sync_bracket", dependencies=[Depends(verify_admin_pin)])
+async def api_sync_bracket():
+    """Forces Delta Exchange India to synchronize bracket SL/TP orders on the active trade."""
+    if not trade_manager or not trade_manager.active_trade:
+        raise HTTPException(status_code=400, detail="No active trade to sync bracket orders for")
+    res = await trade_manager.sync_live_bracket()
+    return {"status": "success" if res.get("success") else "failed", "result": res}
 
 
 @app.post("/api/partial", dependencies=[Depends(verify_admin_pin)])

@@ -110,7 +110,9 @@ class DeltaExecutionClient:
         limit_price: Optional[float] = None,
         stop_price: Optional[float] = None,
         post_only: bool = False,
-        reduce_only: bool = False
+        reduce_only: bool = False,
+        bracket_stop_loss_price: Optional[float] = None,
+        bracket_take_profit_price: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Places an order on Delta Exchange India.
@@ -134,6 +136,13 @@ class DeltaExecutionClient:
         if stop_price is not None:
             payload["stop_price"] = str(stop_price)
             payload["stop_order_type"] = "stop_loss_order"
+
+        if bracket_stop_loss_price is not None:
+            payload["bracket_stop_loss_price"] = str(round(bracket_stop_loss_price, 4))
+            payload["bracket_stop_trigger_method"] = "mark_price"
+        if bracket_take_profit_price is not None:
+            payload["bracket_take_profit_price"] = str(round(bracket_take_profit_price, 4))
+            payload["bracket_stop_trigger_method"] = "mark_price"
 
         body = json.dumps(payload)
         headers = self._get_headers("POST", path, body=body)
@@ -161,11 +170,20 @@ class DeltaExecutionClient:
         """Places or updates a Bracket Order (Stop Loss & Take Profit) on an active position."""
         path = "/v2/orders/bracket"
         product_id = self.get_product_id(symbol)
-        payload: Dict[str, Any] = {"product_id": product_id}
+        payload: Dict[str, Any] = {
+            "product_id": product_id,
+            "bracket_stop_trigger_method": "mark_price"
+        }
         if stop_loss_price is not None:
-            payload["bracket_stop_loss_price"] = str(stop_loss_price)
+            payload["stop_loss_order"] = {
+                "order_type": "market_order",
+                "stop_price": str(round(stop_loss_price, 4))
+            }
         if take_profit_price is not None:
-            payload["bracket_take_profit_price"] = str(take_profit_price)
+            payload["take_profit_order"] = {
+                "order_type": "market_order",
+                "stop_price": str(round(take_profit_price, 4))
+            }
 
         body = json.dumps(payload)
         headers = self._get_headers("POST", path, body=body)

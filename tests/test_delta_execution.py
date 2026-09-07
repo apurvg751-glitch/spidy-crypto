@@ -89,12 +89,14 @@ async def test_hybrid_market_entry_execution(temp_db):
 
     await tm._submit_live_order(setup_mock, pv_mock)
 
-    # Verify market order placed immediately (hybrid execution)
+    # Verify market order placed immediately with bracket parameters (atomic execution)
     tm.delta_execution.place_order.assert_called_once_with(
         symbol="SOLUSD",
         side="buy",
         order_type="market_order",
-        size=2
+        size=2,
+        bracket_stop_loss_price=105.20,
+        bracket_take_profit_price=106.50
     )
 
     # Verify initial bracket protection placed
@@ -103,6 +105,32 @@ async def test_hybrid_market_entry_execution(temp_db):
         stop_loss_price=105.20,
         take_profit_price=106.50
     )
+
+
+@pytest.mark.asyncio
+async def test_place_bracket_order_schema(execution_client):
+    import json
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"success": True, "result": {"id": 111}}
+
+    with patch.object(execution_client.client, "post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = mock_resp
+        res = await execution_client.place_bracket_order(
+            symbol="SOLUSD",
+            stop_loss_price=104.32,
+            take_profit_price=105.74
+        )
+        assert res["success"] is True
+        call_args = mock_post.call_args
+        sent_body = json.loads(call_args.kwargs["data"])
+        assert sent_body["product_id"] == 14823
+        assert sent_body["bracket_stop_trigger_method"] == "mark_price"
+        assert sent_body["stop_loss_order"]["order_type"] == "market_order"
+        assert sent_body["stop_loss_order"]["stop_price"] == "104.32"
+        assert sent_body["take_profit_order"]["order_type"] == "market_order"
+        assert sent_body["take_profit_order"]["stop_price"] == "105.74"
+        await execution_client.close()
 
 
 @pytest.mark.asyncio

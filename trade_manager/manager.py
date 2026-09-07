@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Union, Dict
 
 from config.precision import format_price, round_price
 from config.settings import settings
@@ -388,14 +388,16 @@ class TradeManager:
                 symbol=setup.coin,
                 side=side,
                 order_type="market_order",
-                size=size
+                size=size,
+                bracket_stop_loss_price=setup.stop_loss,
+                bracket_take_profit_price=setup.target_1
             )
             if res.get("success"):
                 order_data = res.get("order", {})
                 order_id = order_data.get("id")
                 fill_price = float(order_data.get("average_fill_price") or order_data.get("limit_price") or setup.entry)
                 logger.info(f"✅ [DELTA LIVE HYBRID] Market entry filled on Delta India. Order ID: {order_id}, Fill: {fill_price}")
-                # Immediately attach initial bracket protection (Stop Loss & Target 1)
+                # Immediately attach/reinforce bracket protection (Stop Loss & Target 1)
                 await self.delta_execution.place_bracket_order(
                     symbol=setup.coin,
                     stop_loss_price=setup.stop_loss,
@@ -839,6 +841,21 @@ class TradeManager:
 
             self._notify_state_change()
             return True, f"Stop Loss moved to Breakeven (${entry:,.2f}) for {coin}!"
+
+    async def sync_live_bracket(self) -> Dict[str, Any]:
+        """Synchronizes live bracket order (SL & TP) on Delta Exchange for the current active trade."""
+        if not self.active_trade or not self.delta_execution:
+            return {"success": False, "error": "No active trade or delta execution client"}
+        coin = self.active_trade.get("coin")
+        sl = self.active_trade.get("stop_loss")
+        tp = self.active_trade.get("target_2") if self.active_trade.get("partial_closed") else self.active_trade.get("target_1")
+        logger.info(f"🛡️ [DELTA SYNC] Syncing live bracket for {coin}: SL={sl}, TP={tp}")
+        res = await self.delta_execution.place_bracket_order(
+            symbol=coin,
+            stop_loss_price=sl,
+            take_profit_price=tp
+        )
+        return res
 
     async def _execute_partial(
         self,
