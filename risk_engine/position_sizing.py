@@ -42,7 +42,8 @@ class PositionSizer:
         max_daily_loss: Optional[float] = None,
         max_consecutive_losses: Optional[int] = None,
         target_rr: Optional[float] = None,
-        grade: Optional[str] = None
+        grade: Optional[str] = None,
+        coin: Optional[str] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
@@ -51,12 +52,19 @@ class PositionSizer:
         cooldown = cooldown_seconds if cooldown_seconds is not None else settings.COOLDOWN_SECONDS
         now = int(time.time())
 
-        # 1. Daily Loss Guard (Disabled per user configuration)
+        # 1. Daily Loss Guard & Quota Clamping
         daily_limit = max_daily_loss if max_daily_loss is not None else (settings.MAX_DAILY_LOSS if getattr(settings, "ENABLE_DAILY_LOSS_LIMIT", False) else None)
         if daily_limit is not None and current_daily_loss >= daily_limit:
             return PositionSizeResult(
                 is_allowed=False,
                 rejection_reason=f"Max daily loss reached ({current_daily_loss:.2f} >= {daily_limit:.2f})"
+            )
+
+        remaining_quota = max(0.0, daily_limit - current_daily_loss) if daily_limit is not None else None
+        if remaining_quota is not None and remaining_quota <= 5.0:
+            return PositionSizeResult(
+                is_allowed=False,
+                rejection_reason=f"Insufficient remaining daily loss quota (₹{remaining_quota:.2f} <= ₹5.00)"
             )
 
         # 2. Consecutive Losses Guard (Disabled per user configuration)
@@ -100,7 +108,42 @@ class PositionSizer:
         notional_usd = notional / usd_rate
         units = notional_usd / entry
         risk_amount = (units * stop_dist) * usd_rate
-        risk_pct = round((risk_amount / required_margin) * 100.0, 2)
+
+        # Dynamic Quota Clamping:
+        # When an intraday loss has already been incurred (current_daily_loss > 0),
+        # strictly clamp the subsequent trade's risk to the remaining daily quota.
+        if remaining_quota is not None and current_daily_loss > 0 and risk_amount > remaining_quota:
+            max_units_by_quota = (remaining_quota / usd_rate) / stop_dist
+
+            # Minimum contract units guard based on asset specifications
+            min_units = 0.001
+            if coin:
+                sym_clean = coin.upper()
+                if "BTC" in sym_clean:
+                    min_units = 0.001
+                elif "ETH" in sym_clean:
+                    min_units = 0.01
+                elif "SOL" in sym_clean:
+                    min_units = 0.1
+                elif "XRP" in sym_clean:
+                    min_units = 1.0
+                elif "AVAX" in sym_clean:
+                    min_units = 0.5
+
+            if max_units_by_quota < min_units:
+                min_risk = (min_units * stop_dist) * usd_rate
+                return PositionSizeResult(
+                    is_allowed=False,
+                    rejection_reason=f"Structural stop distance ({stop_dist:.4f}) requires ₹{min_risk:.2f} minimum risk, exceeding remaining daily quota of ₹{remaining_quota:.2f}"
+                )
+
+            units = max_units_by_quota
+            notional_usd = units * entry
+            notional = notional_usd * usd_rate
+            required_margin = round(notional / lev, 2)
+            risk_amount = round((units * stop_dist) * usd_rate, 2)
+
+        risk_pct = round((risk_amount / max(required_margin, 1.0)) * 100.0, 2)
 
         return PositionSizeResult(
             is_allowed=True,

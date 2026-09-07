@@ -269,8 +269,10 @@ class TradeManager:
                 consecutive_losses=self.consecutive_losses,
                 last_trade_close_time=self.last_trade_close_time,
                 cooldown_seconds=self.cooldown_seconds,
+                max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 201.0),
                 target_rr=getattr(winner, "rr", None),
-                grade=getattr(winner, "grade", None)
+                grade=getattr(winner, "grade", None),
+                coin=winner.coin
             )
 
             if not pos_calc.is_allowed:
