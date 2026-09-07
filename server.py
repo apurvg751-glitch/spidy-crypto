@@ -999,24 +999,17 @@ async def api_reset():
     return {"status": "success", "message": "SPIDY CRYPTO system reset complete. All trade history and cooldowns cleared."}
 
 
-class SetDailyLossRequest(BaseModel):
-    loss_amount: float
-    note: Optional[str] = "Manual Trade Loss"
-
-
-@app.post("/api/set_daily_loss", dependencies=[Depends(verify_admin_pin)])
 @app.get("/api/set_daily_loss", dependencies=[Depends(verify_admin_pin)])
+@app.post("/api/set_daily_loss", dependencies=[Depends(verify_admin_pin)])
 async def api_set_daily_loss(
-    loss: Optional[float] = Query(None, alias="loss"),
-    req: Optional[SetDailyLossRequest] = None
+    loss: float = Query(141.0, alias="loss")
 ):
     """Calibrates incurred daily loss amount and recalculates remaining risk budget."""
     from datetime import datetime, timezone, timedelta
     ist_tz = timezone(timedelta(hours=5, minutes=30))
-    loss_val = loss if loss is not None else (req.loss_amount if req else 0.0)
     today_ist = datetime.now(ist_tz).strftime("%Y-%m-%d")
 
-    trade_manager.current_daily_loss = round(float(loss_val), 2)
+    trade_manager.current_daily_loss = round(float(loss), 2)
     trade_manager.current_daily_date = today_ist
     db.set_config("daily_loss_date", today_ist)
     db.set_config("daily_loss_amount", str(trade_manager.current_daily_loss))
@@ -1034,7 +1027,7 @@ async def api_set_daily_loss(
         "current_daily_loss": trade_manager.current_daily_loss,
         "max_daily_loss": max_dl,
         "daily_loss_remaining": rem,
-        "message": f"Daily loss set to ₹{trade_manager.current_daily_loss:.2f}. Remaining budget: ₹{rem:.2f}."
+        "message": f"Daily loss set to {trade_manager.current_daily_loss:.2f}. Remaining budget: {rem:.2f}."
     }
 
 
