@@ -267,9 +267,9 @@ async def lifespan(app: FastAPI):
     scan_task = asyncio.create_task(background_scanner_loop())
     keepalive_task = asyncio.create_task(render_keepalive_loop())
 
-    # Sync live bracket protection to Delta if active trade is active
-    if trade_manager.active_trade and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
-        asyncio.create_task(trade_manager.sync_live_bracket())
+    # Reconcile open positions and sync live bracket protection to Delta
+    if getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+        asyncio.create_task(trade_manager.reconcile_with_delta_positions())
 
     # Telegram interactive polling (Runs 24/7 on primary cloud node)
     bot_listener = None
@@ -344,10 +344,12 @@ async def test_delta_auth():
     try:
         balances = await client.get_wallet_balances()
         pids = await client.init_product_ids()
+        positions = await client.get_positions()
         return {
             "status": "success" if balances.get("success") else "error",
             "balances": balances,
-            "mapped_products": {k: v for k, v in pids.items() if k in ("ETHUSD", "XRPUSD", "AVAXUSD", "BTCUSD")}
+            "positions": positions,
+            "mapped_products": {k: v for k, v in pids.items() if k in ("ETHUSD", "XRPUSD", "AVAXUSD", "BTCUSD", "SOLUSD")}
         }
     except Exception as e:
         return {"status": "exception", "error": str(e)}

@@ -245,7 +245,7 @@ class TradeManager:
                             )
                             return None
 
-            # 2c. 50% FVG Discount Limit Retest Entry Snapper
+            # 2c. Retest Reference Analysis (Informational only - do NOT override entry for market orders)
             from strategy.retest_snapper import RetestSnapper
             retest_res = RetestSnapper.calculate_optimal_entry(
                 symbol=winner.coin,
@@ -254,9 +254,7 @@ class TradeManager:
                 atr=getattr(winner, "atr", winner.entry * 0.005)
             )
             if retest_res.discount_pips > 0:
-                old_entry = winner.entry
-                winner.entry = retest_res.optimal_entry
-                winner.reasons.append(f"Retest Snapper: Discount entry at {winner.entry} ({retest_res.entry_type}, saved {retest_res.discount_pips})")
+                winner.reasons.append(f"Retest Structure: FVG/OB reference at {retest_res.optimal_entry} ({retest_res.entry_type})")
 
             # 3. Position Sizing & Portfolio Risk Check (with 11:59 PM IST daily rollover check)
             self.check_daily_loss_reset()
@@ -397,13 +395,46 @@ class TradeManager:
                 order_id = order_data.get("id")
                 fill_price = float(order_data.get("average_fill_price") or order_data.get("limit_price") or setup.entry)
                 logger.info(f"✅ [DELTA LIVE HYBRID] Market entry filled on Delta India. Order ID: {order_id}, Fill: {fill_price}")
-                # Immediately attach/reinforce bracket protection (Stop Loss & Target 1)
+
+                # ADOPT EXACT EXCHANGE FILL PRICE: Re-anchor all trade math to reality
+                async with self._lock:
+                    if self.active_trade and self.active_trade.get("setup_id") == setup.setup_id:
+                        old_entry = float(self.active_trade.get("entry", fill_price))
+                        old_sl = float(self.active_trade.get("stop_loss", old_entry))
+                        risk_dist = abs(old_entry - old_sl)
+                        if risk_dist <= 0:
+                            risk_dist = fill_price * 0.005
+                        dir_str = self.active_trade.get("direction", "LONG").upper()
+                        target_rr = float(getattr(setup, "rr", 1.6) or 1.6)
+                        if dir_str == "LONG":
+                            real_sl = round_price(setup.coin, fill_price - risk_dist)
+                            real_tp1 = round_price(setup.coin, fill_price + (risk_dist * target_rr))
+                            real_tp2 = round_price(setup.coin, fill_price + (risk_dist * 2.5))
+                        else:
+                            real_sl = round_price(setup.coin, fill_price + risk_dist)
+                            real_tp1 = round_price(setup.coin, fill_price - (risk_dist * target_rr))
+                            real_tp2 = round_price(setup.coin, fill_price - (risk_dist * 2.5))
+
+                        self.active_trade["entry"] = fill_price
+                        self.active_trade["stop_loss"] = real_sl
+                        self.active_trade["original_stop"] = real_sl
+                        self.active_trade["target_1"] = real_tp1
+                        self.active_trade["target_2"] = real_tp2
+                        self.active_trade["peak_favorable_price"] = fill_price
+                        self.active_trade["peak_adverse_price"] = fill_price
+                        self.db.set_active_trade(self.active_trade)
+                        logger.info(f"🎯 [DELTA LIVE] Re-anchored trade to real fill {fill_price}: SL={real_sl}, TP1={real_tp1}, TP2={real_tp2}")
+                        self._notify_state_change()
+
+                # Immediately attach/reinforce bracket protection (Stop Loss & Target 1) using calibrated levels
+                sl_to_send = self.active_trade.get("stop_loss") if self.active_trade else setup.stop_loss
+                tp_to_send = self.active_trade.get("target_1") if self.active_trade else setup.target_1
                 await self.delta_execution.place_bracket_order(
                     symbol=setup.coin,
-                    stop_loss_price=setup.stop_loss,
-                    take_profit_price=setup.target_1
+                    stop_loss_price=sl_to_send,
+                    take_profit_price=tp_to_send
                 )
-                logger.info(f"🛡️ [DELTA LIVE HYBRID] Initial bracket protection attached: SL={setup.stop_loss}, TP1={setup.target_1}")
+                logger.info(f"🛡️ [DELTA LIVE HYBRID] Native bracket protection attached on Delta: SL={sl_to_send}, TP1={tp_to_send}")
             else:
                 logger.error(f"❌ [DELTA LIVE HYBRID] Market order failed on Delta India: {res.get('error')}")
         except Exception as e:
@@ -856,6 +887,72 @@ class TradeManager:
             take_profit_price=tp
         )
         return res
+
+    async def reconcile_with_delta_positions(self) -> Dict[str, Any]:
+        """
+        Institutional Position Reconciler:
+        Queries Delta Exchange India for open positions.
+        If an open position exists on the exchange, ensures Spidy tracks it and has bracket orders active.
+        """
+        if not self.delta_execution or not getattr(settings, "ENABLE_LIVE_EXECUTION", False):
+            return {"status": "skipped", "message": "Live execution disabled"}
+
+        try:
+            positions = await self.delta_execution.get_positions()
+            active_pos = [p for p in positions if float(p.get("size", 0)) != 0]
+            if not active_pos:
+                return {"status": "clean", "message": "No active open positions on Delta"}
+
+            for pos in active_pos:
+                symbol = pos.get("product_symbol") or next((k for k, v in self.delta_execution.product_ids.items() if v == pos.get("product_id")), None)
+                size = float(pos.get("size", 0))
+                entry_price = float(pos.get("entry_price") or 0)
+                if not symbol or size == 0 or entry_price <= 0:
+                    continue
+
+                direction = "LONG" if size > 0 else "SHORT"
+                # If Spidy does not have an active trade, adopt it
+                if not self.active_trade:
+                    logger.info(f"🔄 [DELTA RECONCILE] Adopting active position on Delta India: {symbol} {direction} size={size} entry={entry_price}")
+                    sl_dist = entry_price * 0.007
+                    sl_price = round(entry_price - sl_dist, 4) if direction == "LONG" else round(entry_price + sl_dist, 4)
+                    tp1_price = round(entry_price + (sl_dist * 1.6), 4) if direction == "LONG" else round(entry_price - (sl_dist * 1.6), 4)
+                    tp2_price = round(entry_price + (sl_dist * 2.5), 4) if direction == "LONG" else round(entry_price - (sl_dist * 2.5), 4)
+
+                    record = {
+                        "setup_id": f"{symbol}_RECONCILED_{int(time.time())}",
+                        "coin": symbol,
+                        "direction": direction,
+                        "entry": entry_price,
+                        "stop_loss": sl_price,
+                        "original_stop": sl_price,
+                        "target_1": tp1_price,
+                        "target_2": tp2_price,
+                        "rr": 2.0,
+                        "setup_score": 90,
+                        "grade": "B+",
+                        "trade_status": "ACTIVE",
+                        "activated_timestamp": int(time.time()),
+                        "model_id": "RECONCILED",
+                        "model_name": "Delta Live Position",
+                        "margin_used": 3150.0,
+                        "leverage": 6,
+                        "delta_contracts": abs(size),
+                        "current_price": entry_price,
+                        "reasons": ["Adopted live position from Delta Exchange India during reconciliation"]
+                    }
+                    self.active_trade = record
+                    self.db.set_active_trade(record)
+
+                # Ensure bracket protection is active on Delta Exchange
+                bracket_res = await self.sync_live_bracket()
+                self._notify_state_change()
+                return {"status": "reconciled", "symbol": symbol, "bracket_res": bracket_res, "active_trade": self.active_trade}
+
+            return {"status": "ok"}
+        except Exception as e:
+            logger.error(f"Error during Delta position reconciliation: {e}")
+            return {"status": "error", "error": str(e)}
 
     async def _execute_partial(
         self,
