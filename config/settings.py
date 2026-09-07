@@ -78,6 +78,7 @@ class Settings(BaseModel):
 
     # Global One-Trade Rule
     MAX_ACTIVE_TRADES: int = 1
+    SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "True").lower() in ("true", "1")
 
     # Strategy Model Filtering (Quarantine underperforming models)
     DISABLED_MODELS: list[str] = ["MODEL_4", "MODEL_8", "MODEL_9"]

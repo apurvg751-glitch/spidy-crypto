@@ -798,6 +798,12 @@ class TradeManager:
         self.active_trade = None
         self.global_status = "WATCHING"
 
+        # 1-Trade Auto-Halt Guard: Automatically pause Spidy after this trade completes
+        if getattr(settings, "SINGLE_TRADE_MODE", True):
+            self.is_paused = True
+            self.global_status = "STOPPED"
+            logger.info("🛑 [SINGLE TRADE MODE] Auto-paused Spidy after trade finished.")
+
         logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Units: {position_units:.4g}, Margin: ₹{margin_used:.2f}, Achieved R: {achieved_r:.2f}, PnL: ₹{pnl:.2f}. Global lock RELEASED.")
         await self.telegram.send_trade_lifecycle_update(
             coin=coin,
