@@ -43,16 +43,26 @@ class PositionSizer:
         max_consecutive_losses: Optional[int] = None,
         target_rr: Optional[float] = None,
         grade: Optional[str] = None,
-        coin: Optional[str] = None
+        coin: Optional[str] = None,
+        min_allowed_margin: Optional[float] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
         margin_cap = max_allowed_margin or settings.MAX_ALLOWED_MARGIN
+        min_margin = min_allowed_margin if min_allowed_margin is not None else getattr(settings, "MIN_ALLOWED_MARGIN", 3000.0)
+        max_margin = margin_cap if margin_cap is not None else getattr(settings, "MAX_ALLOWED_MARGIN", 4500.0)
         lev = leverage or settings.DEFAULT_LEVERAGE
         cooldown = cooldown_seconds if cooldown_seconds is not None else settings.COOLDOWN_SECONDS
         now = int(time.time())
 
-        # 1. Daily Loss Guard & Quota Clamping
+        # 1. Minimum Equity Guard (All trades allowed within ₹3,000 to ₹4,500 band)
+        if equity < min_margin:
+            return PositionSizeResult(
+                is_allowed=False,
+                rejection_reason=f"Account equity (₹{equity:,.2f}) is below minimum allowed margin threshold of ₹{min_margin:,.2f}"
+            )
+
+        # 2. Daily Loss Guard & Quota Clamping
         daily_limit = max_daily_loss if max_daily_loss is not None else (settings.MAX_DAILY_LOSS if getattr(settings, "ENABLE_DAILY_LOSS_LIMIT", False) else None)
         if daily_limit is not None and current_daily_loss >= daily_limit:
             return PositionSizeResult(
@@ -67,7 +77,7 @@ class PositionSizer:
                 rejection_reason=f"Insufficient remaining daily loss quota (₹{remaining_quota:.2f} <= ₹5.00)"
             )
 
-        # 2. Consecutive Losses Guard (Disabled per user configuration)
+        # 3. Consecutive Losses Guard (Disabled per user configuration)
         consec_limit = max_consecutive_losses if max_consecutive_losses is not None else (settings.MAX_CONSECUTIVE_LOSSES if getattr(settings, "ENABLE_CONSECUTIVE_LOSS_LIMIT", False) else None)
         if consec_limit is not None and consecutive_losses >= consec_limit:
             return PositionSizeResult(
@@ -75,7 +85,7 @@ class PositionSizer:
                 rejection_reason=f"Max consecutive losses reached ({consecutive_losses} >= {consec_limit})"
             )
 
-        # 3. Cooldown Guard
+        # 4. Cooldown Guard
         if cooldown > 0 and last_trade_close_time > 0 and (now - last_trade_close_time) < cooldown:
             remaining = cooldown - (now - last_trade_close_time)
             return PositionSizeResult(
@@ -90,11 +100,20 @@ class PositionSizer:
                 rejection_reason="Invalid stop distance (<= 0)"
             )
 
-        # Institutional Position Sizing: Base ₹4,200 Margin @ 6x Leverage -> ₹25,200 Notional Value
+        # Dynamic Live Margin Band (₹3,000 – ₹4,500)
+        # If equity is below the margin ceiling, scale down to 95% of available equity as a buffer
+        if equity < max_margin:
+            usable_equity = equity * 0.95
+        else:
+            usable_equity = max_margin
+
+        base_margin = max(min_margin * 0.90, min(usable_equity, max_margin))
+        if margin_cap is not None:
+            base_margin = min(base_margin, margin_cap)
+
         # Dynamic Variable Margin Adjustment:
         # If a setup has a slightly lower swing high (1.6R <= RR < 2.0R),
         # dynamically scale margin (e.g. 70% to 90%) to reduce risk exposure on tighter clearance.
-        base_margin = min(margin_cap, 4200.0) if margin_cap else 4200.0
         margin_multiplier = 1.0
         if target_rr is not None and target_rr < 2.0:
             # Scale proportionally: 1.8R gives (1.8/2.0) = 0.90x, clamped to min 0.70x (70% margin)

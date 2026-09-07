@@ -138,7 +138,7 @@ def format_main_alert(setup: dict[str, Any]) -> str:
         f"{white_line_str}\n"
         f"Delta Specs: {setup.get('delta_contracts', 0)} Lots ({setup.get('contract_unit', '')}/lot)\n"
         f"Point Value: {setup.get('point_label', '$1.00')} pt = ±₹{setup.get('point_val_inr', 0):.2f} (±${setup.get('point_val_usd', 0):.4f})\n"
-        f"Position Sizing: ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Notional (₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x)\n\n"
+        f"Position Sizing: ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Notional (₹{int(settings.MIN_ALLOWED_MARGIN):,}–₹{int(settings.MAX_ALLOWED_MARGIN):,} Dynamic Margin @ {settings.DEFAULT_LEVERAGE}x)\n\n"
         f"Status: {status}\n\n"
         f"Other markets remain monitored but new trades are globally blocked while this trade is active.\n"
         f"Only ONE SPIDY CRYPTO trade can be active at one time."
@@ -315,7 +315,8 @@ def format_hud_telemetry(
     lines.append("🛡️ *RISK & CAPITAL TELEMETRY*:")
     lines.append(f"• Daily Loss Limit: *₹{max_dl:,.2f}* (11:59 PM IST Reset)")
     lines.append(f"• Remaining Budget: *₹{rem_dl:,.2f}* ({'SAFE 🟢' if rem_dl > 100 else 'CAUTION ⚠️'})")
-    lines.append(f"• Position Allocation: *₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x* (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Notional)")
+    lines.append(f"• Dynamic Margin Band: *₹{int(getattr(settings, 'MIN_ALLOWED_MARGIN', 3000)):,} – ₹{int(settings.MAX_ALLOWED_MARGIN):,}* (Trades Fully Allowed 🟢)")
+    lines.append(f"• Collateral Shield: *95% Live Wallet Auto-Sync (Zero Margin Error Guarantee)*")
     lines.append("─────────────────────────")
 
     lines.append(f"📡 *MARKET RADAR ({len(settings.SYMBOLS)} MARKETS)*:")

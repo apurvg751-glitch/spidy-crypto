@@ -269,11 +269,32 @@ class TradeManager:
 
             # 3. Position Sizing & Portfolio Risk Check (with 11:59 PM IST daily rollover check)
             self.check_daily_loss_reset()
+
+            # Dynamic Live Delta Wallet Balance Synchronization
+            live_equity = getattr(settings, "ACCOUNT_EQUITY", 4500.0)
+            if self.delta_execution:
+                try:
+                    wb = await self.delta_execution.get_wallet_balances()
+                    if wb.get("success"):
+                        for asset in wb.get("result", []):
+                            if asset.get("asset_symbol") == "USD":
+                                bal_inr = float(asset.get("available_balance_inr") or 0.0)
+                                if bal_inr > 0:
+                                    live_equity = bal_inr
+                                else:
+                                    bal_usd = float(asset.get("available_balance") or 0.0)
+                                    if bal_usd > 0:
+                                        live_equity = bal_usd * getattr(settings, "USD_INR_RATE", 87.5)
+                                break
+                except Exception as e:
+                    logger.warning(f"Could not fetch live wallet balance for sizing: {e}")
+
             pos_calc = PositionSizer.calculate_position(
                 entry=winner.entry,
                 stop_loss=winner.stop_loss,
-                account_equity=settings.ACCOUNT_EQUITY,
+                account_equity=live_equity,
                 max_risk_pct=settings.MAX_RISK_PCT,
+                min_allowed_margin=getattr(settings, "MIN_ALLOWED_MARGIN", 3000.0),
                 max_allowed_margin=settings.MAX_ALLOWED_MARGIN,
                 leverage=settings.DEFAULT_LEVERAGE,
                 current_daily_loss=self.current_daily_loss,
