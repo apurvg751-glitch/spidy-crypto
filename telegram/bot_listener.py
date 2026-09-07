@@ -140,13 +140,54 @@ class TelegramBotListener:
                     "Send `/start` or `/resume` whenever you want to power Spidy back on! 🚀",
                     chat_id
                 )
+            elif text.startswith("/setloss") or text.startswith("setloss") or text.startswith("/loss") or text.startswith("loss"):
+                parts = raw_text.split()
+                if len(parts) > 1:
+                    try:
+                        amt = float(parts[1].replace("₹", "").replace("$", "").replace(",", "").strip())
+                        from utils.ist import get_ist_now
+                        today_ist = get_ist_now().strftime("%Y-%m-%d")
+                        self.trade_manager.current_daily_loss = round(amt, 2)
+                        self.trade_manager.current_daily_date = today_ist
+                        if self.trade_manager.db:
+                            self.trade_manager.db.set_config("daily_loss_date", today_ist)
+                            self.trade_manager.db.set_config("daily_loss_amount", str(round(amt, 2)))
+                        max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+                        rem = max(0.0, max_dl - self.trade_manager.current_daily_loss)
+                        if self.trade_manager.current_daily_loss >= max_dl:
+                            self.trade_manager.is_paused = True
+                            self.trade_manager.global_status = "STOPPED"
+                        await self._send_reply(
+                            f"🛡️ *DAILY LOSS CALIBRATED*\n\n"
+                            f"• Daily Loss Recorded: *₹{self.trade_manager.current_daily_loss:,.2f}*\n"
+                            f"• Max Daily Limit: *₹{max_dl:,.2f}*\n"
+                            f"• Remaining Budget: *₹{rem:,.2f}* {'🟢 SAFE' if rem > 50 else ('🟡 TIGHT' if rem > 0 else '🔴 EXHAUSTED')}\n\n"
+                            f"Telegram HUD will now reflect this updated balance!",
+                            chat_id,
+                            reply_markup=get_hud_inline_keyboard()
+                        )
+                    except ValueError:
+                        await self._send_reply("⚠️ Invalid amount format. Usage: `/setloss 141` or `/loss 141`", chat_id)
+                else:
+                    cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
+                    max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+                    rem = max(0.0, max_dl - cur_loss)
+                    await self._send_reply(
+                        f"🛡️ *CURRENT RISK & CAPITAL TELEMETRY*\n\n"
+                        f"• Daily Loss Incurred: *₹{cur_loss:,.2f}*\n"
+                        f"• Max Daily Limit: *₹{max_dl:,.2f}*\n"
+                        f"• Remaining Budget: *₹{rem:,.2f}*\n\n"
+                        f"To update or record a loss, type: `/setloss <amount>` (e.g. `/setloss 141`)",
+                        chat_id,
+                        reply_markup=get_hud_inline_keyboard()
+                    )
             elif text in ("/start", "start", "/resume", "resume", "/poweron", "poweron"):
                 self.trade_manager.resume_trading()
                 await self._send_reply(
                     "▶️ *SPIDY BOT POWERED ON / RESUMED*\n\n"
                     "• 24/7 Institutional Scanner is ACTIVE.\n"
                     "• Global slot is OPEN (0/1).\n"
-                    "• Monitoring all 6 Delta Exchange markets! 🚀",
+                    f"• Monitoring all {len(settings.SYMBOLS)} Delta Exchange markets! 🚀",
                     chat_id
                 )
             elif text in ("/help", "help"):
@@ -155,12 +196,13 @@ class TelegramBotListener:
                     "• `/hud` — 🎛️ Master Interactive 6-Button Telemetry HUD\n"
                     "• `/chart [coin]` — 📈 Instant Dark-Mode Chart with ⚪ HTF White Line\n"
                     "• `/status` — ⚡ Live Telemetry & Institutional Thinking Report\n"
-                    "• `/scan` — ⚡ Immediate Scan Across All 9 Models (6 Coins)\n"
+                    f"• `/scan` — ⚡ Immediate Scan Across All 9 Models ({len(settings.SYMBOLS)} Coins)\n"
                     "• `/brief` — 🌙 11:59 PM IST Executive Performance Recap\n"
                     "• `/be` — 🎯 Move Stop Loss to Breakeven (Risk-Free Shield)\n"
                     "• `/partial` — 💰 Secure 50% Profit into Target 1\n"
                     "• `/close` — 🛑 Emergency Exit Active Trade\n"
                     "• `/journal` — 📖 Daily Trade Journal & PnL Report\n"
+                    "• `/setloss [amt]` — 🛡️ Calibrate Incurred Loss & Remaining Budget\n"
                     "• `/stop` or `/pause` — 🛑 Power Off Bot\n"
                     "• `/start` or `/resume` — ▶️ Power On Bot\n"
                     "• `/reset` — 🔄 Wipe State & Restart Scans Fresh\n\n"
@@ -175,7 +217,7 @@ class TelegramBotListener:
                     "🔄 *SPIDY CRYPTO SYSTEM RESET COMPLETE*\n\n"
                     "• All historical setups, active locks, and cooldowns have been cleared.\n"
                     f"• Allocated Margin: *₹{int(settings.MAX_ALLOWED_MARGIN):,}* @ *{settings.DEFAULT_LEVERAGE}x Leverage* (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Position Size).\n"
-                    "• Ready to scan all 6 markets fresh! 🚀",
+                    f"• Ready to scan all {len(settings.SYMBOLS)} markets fresh! 🚀",
                     chat_id
                 )
 
@@ -256,8 +298,8 @@ class TelegramBotListener:
 
         daily_loss_info = {
             "current_daily_loss": getattr(self.trade_manager, "current_daily_loss", 0.0),
-            "max_daily_loss": getattr(settings, "MAX_DAILY_LOSS", 420.0),
-            "daily_loss_remaining": max(0.0, getattr(settings, "MAX_DAILY_LOSS", 420.0) - getattr(self.trade_manager, "current_daily_loss", 0.0))
+            "max_daily_loss": getattr(settings, "MAX_DAILY_LOSS", 201.0),
+            "daily_loss_remaining": max(0.0, getattr(settings, "MAX_DAILY_LOSS", 201.0) - getattr(self.trade_manager, "current_daily_loss", 0.0))
         }
 
         market_zones = {}
@@ -413,7 +455,7 @@ class TelegramBotListener:
         from journal.trade_journal import TradeJournalEngine
         data = TradeJournalEngine.get_daily_trades()
         cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
-        max_loss = getattr(settings, "MAX_DAILY_LOSS", 420.0)
+        max_loss = getattr(settings, "MAX_DAILY_LOSS", 201.0)
         brief_text = format_daily_executive_brief(data, current_daily_loss=cur_loss, max_daily_loss=max_loss)
         await self._send_reply(brief_text, chat_id, reply_markup=get_hud_inline_keyboard())
 

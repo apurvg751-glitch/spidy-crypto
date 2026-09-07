@@ -999,6 +999,45 @@ async def api_reset():
     return {"status": "success", "message": "SPIDY CRYPTO system reset complete. All trade history and cooldowns cleared."}
 
 
+class SetDailyLossRequest(BaseModel):
+    loss_amount: float
+    note: Optional[str] = "Manual Trade Loss"
+
+
+@app.post("/api/set_daily_loss", dependencies=[Depends(verify_admin_pin)])
+@app.get("/api/set_daily_loss", dependencies=[Depends(verify_admin_pin)])
+async def api_set_daily_loss(
+    loss: Optional[float] = Query(None, alias="loss"),
+    req: Optional[SetDailyLossRequest] = None
+):
+    """Calibrates incurred daily loss amount and recalculates remaining risk budget."""
+    from utils.ist import get_ist_now
+    loss_val = loss if loss is not None else (req.loss_amount if req else 0.0)
+    today_ist = get_ist_now().strftime("%Y-%m-%d")
+
+    trade_manager.current_daily_loss = round(float(loss_val), 2)
+    trade_manager.current_daily_date = today_ist
+    db.set_config("daily_loss_date", today_ist)
+    db.set_config("daily_loss_amount", str(trade_manager.current_daily_loss))
+
+    max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+    rem = max(0.0, max_dl - trade_manager.current_daily_loss)
+
+    if trade_manager.current_daily_loss >= max_dl:
+        trade_manager.is_paused = True
+        trade_manager.global_status = "STOPPED"
+
+    await broadcast_full_status()
+    return {
+        "status": "success",
+        "current_daily_loss": trade_manager.current_daily_loss,
+        "max_daily_loss": max_dl,
+        "daily_loss_remaining": rem,
+        "message": f"Daily loss set to ₹{trade_manager.current_daily_loss:.2f}. Remaining budget: ₹{rem:.2f}."
+    }
+
+
+
 @app.get("/api/monte-carlo")
 async def api_monte_carlo(simulations: int = 500, trades: int = 100):
     """Executes Monte Carlo quantitative simulation on strategy performance."""
