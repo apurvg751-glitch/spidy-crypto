@@ -278,7 +278,7 @@ class TelegramNotifier:
         self,
         target_date: Optional[str] = None,
         current_daily_loss: float = 0.0,
-        max_daily_loss: float = 420.0
+        max_daily_loss: float = 201.0
     ) -> bool:
         """Sends the automated 11:59 PM IST Daily Executive Briefing."""
         try:

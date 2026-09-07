@@ -52,7 +52,7 @@ def test_daily_loss_resets_on_restart_if_past_ist_midnight(tmp_path):
 
     # Simulate yesterday's date in DB with max loss hit
     db.set_config("daily_loss_date", "2026-09-01")
-    db.set_config("daily_loss_amount", "420.0")
+    db.set_config("daily_loss_amount", "201.0")
 
     # Start new TradeManager today
     tm = TradeManager(db=db)

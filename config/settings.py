@@ -67,7 +67,7 @@ class Settings(BaseModel):
     # Daily Loss Limit (Active per user instruction) | Consecutive loss halt disabled
     ENABLE_DAILY_LOSS_LIMIT: bool = os.getenv("ENABLE_DAILY_LOSS_LIMIT", "True").lower() in ("true", "1")
     ENABLE_CONSECUTIVE_LOSS_LIMIT: bool = os.getenv("ENABLE_CONSECUTIVE_LOSS_LIMIT", "False").lower() in ("true", "1")
-    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "195.0"))
+    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "201.0"))
     MAX_CONSECUTIVE_LOSSES: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "999"))
     COOLDOWN_SECONDS: int = int(os.getenv("COOLDOWN_SECONDS", "300"))
 
@@ -78,7 +78,7 @@ class Settings(BaseModel):
 
     # Global One-Trade Rule
     MAX_ACTIVE_TRADES: int = 1
-    SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "True").lower() in ("true", "1")
+    SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "False").lower() in ("true", "1")
 
     # Strategy Model Filtering (Quarantine underperforming models)
     DISABLED_MODELS: list[str] = ["MODEL_4", "MODEL_8", "MODEL_9"]

@@ -836,7 +836,7 @@ class TradeManager:
             for s in settings.SYMBOLS:
                 reentry_status[s] = self.reentry_manager.get_market_status(s)
 
-        max_dl = getattr(settings, "MAX_DAILY_LOSS", 195.0)
+        max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
         daily_loss_rem = max(0.0, max_dl - self.current_daily_loss)
 
         return {

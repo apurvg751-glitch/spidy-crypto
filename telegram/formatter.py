@@ -267,7 +267,7 @@ def format_hud_telemetry(
 ) -> str:
     """Renders the master interactive HUD status display for `/hud`."""
     current_dl = float(daily_loss_info.get("current_daily_loss", 0.0))
-    max_dl = float(daily_loss_info.get("max_daily_loss", 420.0))
+    max_dl = float(daily_loss_info.get("max_daily_loss", getattr(settings, "MAX_DAILY_LOSS", 201.0)))
     rem_dl = float(daily_loss_info.get("daily_loss_remaining", max(0.0, max_dl - current_dl)))
 
     lines = [
@@ -289,24 +289,16 @@ def format_hud_telemetry(
         price_diff = (curr_p - entry) if direction == "LONG" else (entry - curr_p)
         r_dist = max(abs(entry - sl), 1e-4)
         achieved_r = price_diff / r_dist
-        pnl_emoji = "🟢" if price_diff >= 0 else "🔴"
-        r_sign = "+" if achieved_r >= 0 else ""
-
         from market_data.delta_specs import DeltaPointValueEngine
-        pnl_data = DeltaPointValueEngine.calculate_exact_pnl(
-            symbol=coin,
-            direction=direction,
-            entry=entry,
-            current_price=curr_p,
-            margin_used=float(active_trade.get("margin_used", settings.ACCOUNT_EQUITY)),
-            leverage=int(active_trade.get("leverage", settings.DEFAULT_LEVERAGE))
-        )
+        pnl_data = DeltaPointValueEngine.calculate_exact_pnl(coin, direction, entry, curr_p)
 
-        be_status = "🛡️ Breakeven Active" if active_trade.get("be_moved") else "⏳ Trailing / Invalidation Armed"
+        pnl_emoji = "🟢" if achieved_r >= 0 else "🔴"
+        r_sign = "+" if achieved_r >= 0 else ""
+        be_status = "LOCKED 🛡️" if active_trade.get("be_moved") else "MONITORING ⏳"
 
-        lines.append(f"🪙 *ACTIVE POSITION*: *{coin} ({direction})* {pnl_emoji}")
-        lines.append(f"• Model: *{model}* | Score: *{score}/100*")
-        lines.append(f"• Entry: *${entry:,.2f}* → Mark: *${curr_p:,.2f}*")
+        lines.append(f"🪙 *ACTIVE TRADE*: *{coin}* ({direction}) {pnl_emoji}")
+        lines.append(f"• Model: *{model}* (Score: {score})")
+        lines.append(f"• Entry: `${entry:,.2f}` | Mark: `${curr_p:,.2f}`")
         lines.append(f"• Net PnL: *{r_sign}₹{pnl_data['pnl_inr']:,.2f} ({r_sign}{achieved_r:.2f}R)* {pnl_emoji}")
         lines.append(f"• Shield: *{be_status}*")
         lines.append("")
@@ -316,7 +308,7 @@ def format_hud_telemetry(
         lines.append(f"🎯 *Levels*: SL: `${sl:,.2f}` | TP1: `${t1:,.2f}` | TP2: `${t2:,.2f}`")
     else:
         lines.append("🪙 *ACTIVE POSITION*: *NONE (0/1 Global Slot Open)* 🟢")
-        lines.append("• Status: *24/7 Scanning Active Across 6 Markets*")
+        lines.append(f"• Status: *24/7 Scanning Active Across {len(settings.SYMBOLS)} Markets*")
         lines.append("• Filter: *Institutional Displacement & SMT Alignment*")
 
     lines.append("─────────────────────────")
@@ -326,7 +318,7 @@ def format_hud_telemetry(
     lines.append(f"• Position Allocation: *₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x* (₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE):,} Notional)")
     lines.append("─────────────────────────")
 
-    lines.append("📡 *MARKET RADAR (6 MARKETS)*:")
+    lines.append(f"📡 *MARKET RADAR ({len(settings.SYMBOLS)} MARKETS)*:")
     zone_dict = market_zones or {}
     for sym in settings.SYMBOLS:
         p = live_prices.get(sym, 0.0)
@@ -342,7 +334,7 @@ def format_hud_telemetry(
 def format_daily_executive_brief(
     data: dict[str, Any],
     current_daily_loss: float = 0.0,
-    max_daily_loss: float = 420.0
+    max_daily_loss: float = 201.0
 ) -> str:
     """
     Formats the automated 11:59 PM IST Daily Executive Briefing.
