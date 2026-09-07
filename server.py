@@ -1011,9 +1011,10 @@ async def api_set_daily_loss(
     req: Optional[SetDailyLossRequest] = None
 ):
     """Calibrates incurred daily loss amount and recalculates remaining risk budget."""
-    from utils.ist import get_ist_now
+    from datetime import datetime, timezone, timedelta
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
     loss_val = loss if loss is not None else (req.loss_amount if req else 0.0)
-    today_ist = get_ist_now().strftime("%Y-%m-%d")
+    today_ist = datetime.now(ist_tz).strftime("%Y-%m-%d")
 
     trade_manager.current_daily_loss = round(float(loss_val), 2)
     trade_manager.current_daily_date = today_ist

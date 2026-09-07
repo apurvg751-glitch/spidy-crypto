@@ -145,8 +145,9 @@ class TelegramBotListener:
                 if len(parts) > 1:
                     try:
                         amt = float(parts[1].replace("₹", "").replace("$", "").replace(",", "").strip())
-                        from utils.ist import get_ist_now
-                        today_ist = get_ist_now().strftime("%Y-%m-%d")
+                        from datetime import datetime, timezone, timedelta
+                        ist_tz = timezone(timedelta(hours=5, minutes=30))
+                        today_ist = datetime.now(ist_tz).strftime("%Y-%m-%d")
                         self.trade_manager.current_daily_loss = round(amt, 2)
                         self.trade_manager.current_daily_date = today_ist
                         if self.trade_manager.db:
