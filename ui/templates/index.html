@@ -66,7 +66,7 @@
                 <div class="matrix-item"><span class="matrix-lbl">POINT VALUE</span><span id="wt-point-val" class="matrix-val cyan">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">DELTA LOTS</span><span id="wt-delta-contracts" class="matrix-val amber">--</span></div>
                 <div class="matrix-item"><span class="matrix-lbl">POINTS MOVED</span><span id="wt-points-moved" class="matrix-val emerald">--</span></div>
-                <div class="matrix-item"><span class="matrix-lbl">MARGIN ALLOCATED</span><span id="wt-margin" class="matrix-val amber">₹4,200 (6x)</span></div>
+                <div class="matrix-item"><span class="matrix-lbl">MARGIN ALLOCATED</span><span id="wt-margin" class="matrix-val amber">₹4,500 (6x / 2 Lots)</span></div>
             </div>
 
             <!-- Dynamic Trade Journey Track (Progress to TP) -->
@@ -123,12 +123,12 @@
     <div id="global-standby-banner" class="standby-banner">
         <div style="display:flex; align-items:center; gap:10px;">
             <div id="standby-dot" class="status-dot green"></div>
-            <span id="standby-title" style="font-weight:800; color:var(--emerald-neon); font-size:12px; font-family:var(--font-mono); letter-spacing:0.5px;">GLOBAL SLOT OPEN (0/1)</span>
+            <span id="standby-title" style="font-weight:800; color:var(--emerald-neon); font-size:12px; font-family:var(--font-mono); letter-spacing:0.5px;">GLOBAL SLOT OPEN (0/1) • 2 LOTS ACTIVE</span>
             <span style="color:var(--text-muted); font-size:12px;">•</span>
-            <span id="standby-desc" style="color:var(--text-secondary); font-size:12px;">24/7 Institutional Scanner Active Across 6 Delta Exchange India Markets</span>
+            <span id="standby-desc" style="color:var(--text-secondary); font-size:12px;">24/7 Institutional Scanner Active Across Delta Exchange India Markets</span>
         </div>
         <div id="standby-subtext" style="font-family:var(--font-mono); font-size:11px; color:var(--cyan-neon);">
-            MAX RISK BOUND: ₹4,200 MARGIN @ 6x LEVERAGE (₹25,200 NOTIONAL)
+            ACTIVE CAPITAL: ₹10,056 EQUITY | 2 LOTS @ 6x LEVERAGE (₹120 RISK / ₹300 CAP)
         </div>
     </div>
 
@@ -318,7 +318,7 @@
                     </div>
                     <div class="level-box">
                         <span class="level-label">Margin / Position</span>
-                        <span class="level-value" id="val-margin" style="color:var(--amber-neon);">Idle (₹4,200 Margin @ 6x)</span>
+                        <span class="level-value" id="val-margin" style="color:var(--amber-neon);">Idle (₹4,500 Margin @ 6x | 2 Lots Active)</span>
                     </div>
                 </div>
 
@@ -438,12 +438,12 @@
 
             <div class="panel-title" style="margin-top:10px;">Risk & Position Rules</div>
             <div style="font-size:11px; font-family:var(--font-mono); color:var(--text-secondary); display:flex; flex-direction:column; gap:6px; background:rgba(0,0,0,0.3); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
-                <div><strong>ALLOCATED MARGIN:</strong> <span style="color:var(--amber-neon);">₹4,200</span></div>
-                <div><strong>LEVERAGE:</strong> <span style="color:var(--cyan-neon);">6x Leverage</span></div>
-                <div><strong>POSITION SIZE:</strong> <span style="color:var(--cyan-neon);">₹25,200 Notional Value</span></div>
-                <div><strong>MAX ACTIVE TRADES:</strong> <span style="color:var(--cyan-neon);">1</span></div>
-                <div><strong>MAX DAILY LOSS:</strong> <span style="color:var(--rose-neon);">₹195.00 Limit (Active)</span></div>
-                <div><strong>RISK EVALUATION:</strong> <span style="color:var(--emerald-neon);">Evaluated on ₹4,200 Margin (1.5% / ₹63 1R)</span></div>
+                <div><strong>ACCOUNT EQUITY:</strong> <span style="color:var(--emerald-neon);">₹10,056 (Delta Live Sync)</span></div>
+                <div><strong>ALLOCATED MARGIN:</strong> <span style="color:var(--amber-neon);">₹4,500 @ 6x (2 Lots Active)</span></div>
+                <div><strong>POSITION SIZING:</strong> <span style="color:var(--cyan-neon);">2 Lots / Contracts per Setup</span></div>
+                <div><strong>MAX ACTIVE TRADES:</strong> <span style="color:var(--cyan-neon);">1 (Sequential Execution)</span></div>
+                <div><strong>MAX DAILY LOSS:</strong> <span style="color:var(--rose-neon);">₹300.00 Limit (Active)</span></div>
+                <div><strong>RISK EVALUATION:</strong> <span style="color:var(--emerald-neon);">Evaluated on ₹10,056 Equity (1.2% / ₹120 Risk)</span></div>
                 <div><strong>STOPPING DISCIPLINE:</strong> Exits on TP, SL, or Telegram Command</div>
                 <div><strong>MINIMUM RR:</strong> 1:1.6+ Institutional Clearance</div>
             </div>

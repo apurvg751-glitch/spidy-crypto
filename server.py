@@ -781,7 +781,7 @@ async def api_analysis(symbol: str):
             "target_1": round_price(sym, t1),
             "target_2": round_price(sym, t2),
             "rr": rr,
-            "margin": f"₹{int(settings.MAX_ALLOWED_MARGIN):,} ({settings.DEFAULT_LEVERAGE}x Lev / ₹{int(settings.MAX_ALLOWED_MARGIN * settings.DEFAULT_LEVERAGE / 1000):.1f}k Pos)" if is_active else f"Idle (₹{int(settings.MAX_ALLOWED_MARGIN):,} @ {settings.DEFAULT_LEVERAGE}x)"
+            "margin": f"₹{int(settings.MAX_ALLOWED_MARGIN):,} ({settings.DEFAULT_LEVERAGE}x Lev / 2 Lots)" if is_active else f"Idle (₹{int(settings.MAX_ALLOWED_MARGIN):,} Margin @ {settings.DEFAULT_LEVERAGE}x | 2 Lots Active)"
         },
         "progression_steps": steps,
         "reasons": [

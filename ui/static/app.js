@@ -282,7 +282,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = formatPrice(sym, activeTrade.stop_loss);
         document.getElementById("val-t1").textContent = formatPrice(sym, activeTrade.target_1);
         document.getElementById("val-t2").textContent = formatPrice(sym, activeTrade.target_2);
-        document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 4200).toLocaleString('en-IN')} (6x Leverage)`;
+        document.getElementById("val-margin").textContent = `₹${Number(activeTrade.margin_used || 4500).toLocaleString('en-IN')} (6x Lev | 2 Lots)`;
 
         const dirBadge = document.getElementById("trade-direction-badge");
         if (dirBadge) {
@@ -294,7 +294,7 @@ function selectSymbol(sym) {
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹4,200 Margin @ 6x)";
+        document.getElementById("val-margin").textContent = "Idle (₹4,500 Margin @ 6x | 2 Lots Active)";
 
         const m = marketStates[sym];
         const dirBadge = document.getElementById("trade-direction-badge");
@@ -651,13 +651,13 @@ function renderTacticalPanel(data) {
         document.getElementById("val-stop").textContent = formatPrice(sym, data.levels.stop_loss);
         document.getElementById("val-t1").textContent = formatPrice(sym, data.levels.target_1);
         document.getElementById("val-t2").textContent = formatPrice(sym, data.levels.target_2);
-        document.getElementById("val-margin").textContent = data.levels.margin || "₹4,200 Margin (6x Lev)";
+        document.getElementById("val-margin").textContent = data.levels.margin || "₹4,500 Margin (6x Lev | 2 Lots)";
     } else {
         document.getElementById("val-entry").textContent = "--";
         document.getElementById("val-stop").textContent = "--";
         document.getElementById("val-t1").textContent = "--";
         document.getElementById("val-t2").textContent = "--";
-        document.getElementById("val-margin").textContent = "Idle (₹4,200 Margin @ 6x)";
+        document.getElementById("val-margin").textContent = "Idle (₹4,500 Margin @ 6x | 2 Lots Active)";
     }
 
     // Delta Exchange India Point Value Telemetry
