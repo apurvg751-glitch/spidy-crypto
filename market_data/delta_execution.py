@@ -191,9 +191,15 @@ class DeltaExecutionClient:
         self,
         symbol: str,
         stop_loss_price: Optional[float] = None,
-        take_profit_price: Optional[float] = None
+        take_profit_price: Optional[float] = None,
+        is_limit_tp: bool = True
     ) -> Dict[str, Any]:
-        """Places or updates a Bracket Order (Stop Loss & Take Profit) on an active position."""
+        """
+        Places or updates a Bracket Order (Stop Loss & Take Profit) on an active position.
+        Uses limit_order for Take Profit to qualify for 0.02% Maker Fee (saving 60% in fees).
+        Automatically cancels old stop orders and issues standalone reduce_only Stop Loss
+        when updating SL to Breakeven above entry.
+        """
         path = "/v2/orders/bracket"
         product_id = self.get_product_id(symbol)
         payload: Dict[str, Any] = {
@@ -206,10 +212,14 @@ class DeltaExecutionClient:
                 "stop_price": str(round(stop_loss_price, 4))
             }
         if take_profit_price is not None:
-            payload["take_profit_order"] = {
-                "order_type": "market_order",
+            tp_type = "limit_order" if is_limit_tp else "market_order"
+            tp_payload: Dict[str, Any] = {
+                "order_type": tp_type,
                 "stop_price": str(round(take_profit_price, 4))
             }
+            if is_limit_tp:
+                tp_payload["limit_price"] = str(round(take_profit_price, 4))
+            payload["take_profit_order"] = tp_payload
 
         body = json.dumps(payload)
         headers = self._get_headers("POST", path, body=body)
@@ -218,14 +228,31 @@ class DeltaExecutionClient:
             res = await self.client.post(f"{self.base_url}{path}", data=body, headers=headers)
             data = res.json()
             if res.status_code in (200, 201) and data.get("success"):
-                logger.info(f"Delta bracket order placed for {symbol}: SL={stop_loss_price}, TP={take_profit_price}")
+                logger.info(f"Delta bracket order placed for {symbol}: SL={stop_loss_price}, TP={take_profit_price} (Limit TP: {is_limit_tp})")
                 return {"success": True, "result": data.get("result")}
             else:
-                logger.warning(f"Delta bracket order response HTTP {res.status_code}: {res.text}")
+                logger.warning(f"Delta bracket order response HTTP {res.status_code}: {res.text}. Attempting fallback standalone reduce_only SL...")
+                # Fallback: If bracket API fails (e.g. SL above entry), place standalone reduce_only Stop Market order
+                if stop_loss_price is not None:
+                    fallback_res = await self.place_standalone_stop_loss(symbol, stop_loss_price)
+                    if fallback_res.get("success"):
+                        return {"success": True, "result": fallback_res.get("order"), "note": "Fallback standalone SL active"}
                 return {"success": False, "error": data.get("error") or res.text}
         except Exception as e:
             logger.error(f"Delta bracket order exception: {e}")
             return {"success": False, "error": str(e)}
+
+    async def place_standalone_stop_loss(self, symbol: str, stop_price: float, side: str = "sell") -> Dict[str, Any]:
+        """Places a standalone reduce_only Stop-Market order (bypasses bracket limits for Breakeven trailing)."""
+        await self.cancel_all_orders(symbol)
+        return await self.place_order(
+            symbol=symbol,
+            side=side,
+            order_type="stop_market_order",
+            size=1, # reduce_only will close remaining position
+            stop_price=stop_price,
+            reduce_only=True
+        )
 
     async def cancel_order(self, order_id: int, product_id: int) -> Dict[str, Any]:
         """Cancels an active order by ID."""
