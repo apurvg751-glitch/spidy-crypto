@@ -219,6 +219,7 @@ class Database:
                     ("MODEL_8", "Order Block + FVG Pullback"),
                     ("MODEL_9", "Liquidity Sweep Reversal ⭐"),
                     ("MODEL_10", "Institutional Sniper ⭐ (100% Confluence)"),
+                    ("MODEL_11", "Asian Range Judas Swing 🎯"),
                     ("COMBINED", "Combined Portfolio")
                 ]
                 for m_id, m_name in models_seed:
@@ -227,11 +228,12 @@ class Database:
                     VALUES (?, ?);
                     """, (m_id, m_name))
             else:
-                # Ensure MODEL_8, MODEL_9, MODEL_10 exist even if model_stats was previously seeded
+                # Ensure MODEL_8, MODEL_9, MODEL_10, MODEL_11 exist even if model_stats was previously seeded
                 for m_id, m_name in [
                     ("MODEL_8", "Order Block + FVG Pullback"),
                     ("MODEL_9", "Liquidity Sweep Reversal ⭐"),
-                    ("MODEL_10", "Institutional Sniper ⭐ (100% Confluence)")
+                    ("MODEL_10", "Institutional Sniper ⭐ (100% Confluence)"),
+                    ("MODEL_11", "Asian Range Judas Swing 🎯")
                 ]:
                     conn.execute("""
                     INSERT OR IGNORE INTO model_stats (model_id, model_name)

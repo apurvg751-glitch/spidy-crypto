@@ -81,8 +81,8 @@ class Settings(BaseModel):
     MAX_ACTIVE_TRADES: int = 1
     SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "False").lower() in ("true", "1")
 
-    # Strategy Model Filtering (Quarantine underperforming models)
-    DISABLED_MODELS: list[str] = ["MODEL_4", "MODEL_8", "MODEL_9"]
+    # Strategy Model Filtering (Quarantine underperforming models based on 5-month backtest)
+    DISABLED_MODELS: list[str] = ["MODEL_4", "MODEL_8", "MODEL_9", "MODEL_12", "MODEL_13"]
 
     # Data Reliability
     STALE_DATA_THRESHOLD_SECONDS: int = 900  # 15 mins for 5m candle

@@ -1091,7 +1091,8 @@ async def api_simulate_setup(
         "MODEL_6": "Trend Pullback",
         "MODEL_8": "Order Block + FVG Pullback",
         "MODEL_9": "Liquidity Sweep Reversal ⭐",
-        "MODEL_10": "Institutional Sniper ⭐ (100% Confluence)"
+        "MODEL_10": "Institutional Sniper ⭐ (100% Confluence)",
+        "MODEL_11": "Asian Range Judas Swing 🎯"
     }
     m_name = model_names.get(model_id, "Institutional Sniper ⭐ (100% Confluence)")
 
