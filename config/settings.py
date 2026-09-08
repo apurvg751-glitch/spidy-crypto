@@ -59,8 +59,8 @@ class Settings(BaseModel):
     SWING_LOOKBACK_MAJOR: int = 5
 
     # Position Sizing & Account Risk (Dynamic Margin Band: ₹3,000 to ₹4,500 @ 6x Leverage)
-    ACCOUNT_EQUITY: float = float(os.getenv("ACCOUNT_EQUITY", "4500.0"))
-    MAX_RISK_PCT: float = float(os.getenv("MAX_RISK_PCT", "2.5"))
+    ACCOUNT_EQUITY: float = float(os.getenv("ACCOUNT_EQUITY", "10056.0"))
+    MAX_RISK_PCT: float = float(os.getenv("MAX_RISK_PCT", "1.2"))
     MIN_ALLOWED_MARGIN: float = float(os.getenv("MIN_ALLOWED_MARGIN", "3000.0"))
     MAX_ALLOWED_MARGIN: float = float(os.getenv("MAX_ALLOWED_MARGIN", "4500.0"))
     DEFAULT_LEVERAGE: int = int(os.getenv("DEFAULT_LEVERAGE", "6"))
