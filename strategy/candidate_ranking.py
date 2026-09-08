@@ -14,7 +14,12 @@ class CandidateRankingEngine:
     """
 
     MODEL_PRIORITY_WEIGHT = {
-        "MODEL_1": 6,   # Liquidity Sweep Reversal (Highest Priority Core)
+        "MODEL_10": 8,  # Institutional Sniper (Highest Priority)
+        "MODEL_11": 7,  # Asian Range Judas Swing (High Priority Session Sweep)
+        "MODEL_14": 7,  # SMT Intermarket Divergence
+        "MODEL_1": 6,   # Liquidity Sweep Reversal
+        "MODEL_13": 6,  # Breaker Block Reversal
+        "MODEL_12": 5,  # Inversion FVG
         "MODEL_4": 5,   # CHoCH Reversal
         "MODEL_3": 4,   # Order Block + FVG
         "MODEL_2": 3,   # BOS Continuation

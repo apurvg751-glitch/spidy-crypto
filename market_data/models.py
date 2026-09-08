@@ -122,5 +122,6 @@ class MarketState(BaseModel):
     candles_15m: list[Candle] = Field(default_factory=list)
     candles_1h: list[Candle] = Field(default_factory=list)
     candles_4h: list[Candle] = Field(default_factory=list)
+    btc_candles_15m: list[Candle] = Field(default_factory=list)
     connection_status: str = "DISCONNECTED"
     mtf_context: Optional[MultiTimeframeContext] = None

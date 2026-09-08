@@ -1,4 +1,4 @@
-﻿# Environment variables
+# Environment variables
 .env
 
 # Database files
@@ -16,3 +16,6 @@ __pycache__/
 *.log
 server_out.log
 server_err.log
+
+# Data cache
+scratch/historical_candles/

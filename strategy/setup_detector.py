@@ -280,7 +280,11 @@ class SetupDetector:
             Model6TrendPullback,
             Model8ObFvgPullback,
             Model9LiquiditySweepReversal,
-            Model10InstitutionalSniper
+            Model10InstitutionalSniper,
+            Model11AsianJudasSwing,
+            Model12InversionFvg,
+            Model13BreakerBlock,
+            Model14SmtDivergence
         )
 
         models = [
@@ -293,7 +297,11 @@ class SetupDetector:
                 Model6TrendPullback(),
                 Model8ObFvgPullback(),
                 Model9LiquiditySweepReversal(),
-                Model10InstitutionalSniper()
+                Model10InstitutionalSniper(),
+                Model11AsianJudasSwing(),
+                Model12InversionFvg(),
+                Model13BreakerBlock(),
+                Model14SmtDivergence()
             ] if m.model_id not in getattr(settings, "DISABLED_MODELS", [])
         ]
 
