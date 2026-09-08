@@ -508,10 +508,10 @@ function updateHUD(data) {
         }
     } else {
         if (lockDot) lockDot.className = "status-dot green";
-        if (lockText) lockText.textContent = "SLOT OPEN (0/1)";
+        if (lockText) lockText.textContent = "SLOTS OPEN (0/2)";
         if (standbyDot) standbyDot.className = "status-dot green";
         if (standbyTitle) {
-            standbyTitle.textContent = "GLOBAL SLOT OPEN (0/1)";
+            standbyTitle.textContent = "GLOBAL SLOTS OPEN (0/2) • 2 LOTS ACTIVE";
             standbyTitle.style.color = "var(--emerald-neon)";
         }
         if (standbyDesc) {

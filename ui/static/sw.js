@@ -1,9 +1,9 @@
 // SPIDY CRYPTO 2.0 - Progressive Web App Service Worker
-const CACHE_NAME = 'spidy-crypto-v4.1';
+const CACHE_NAME = 'spidy-crypto-v4.2';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',
-  '/static/app.js?v=4.1.0',
+  '/static/app.js?v=4.2.0',
   '/static/manifest.json'
 ];
 
