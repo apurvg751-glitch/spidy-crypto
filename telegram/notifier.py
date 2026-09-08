@@ -350,7 +350,7 @@ class TelegramNotifier:
         self,
         target_date: Optional[str] = None,
         current_daily_loss: float = 0.0,
-        max_daily_loss: float = 201.0
+        max_daily_loss: float = 300.0
     ) -> bool:
         """Sends the automated 11:59 PM IST Daily Executive Briefing."""
         try:
@@ -412,7 +412,7 @@ class TelegramNotifier:
         self,
         old_loss: float,
         new_date: str,
-        max_daily_loss: float = 201.0,
+        max_daily_loss: float = 300.0,
         equity: float = 4140.0
     ) -> bool:
         """Sends the clean 11:59 PM IST daily loss budget restoration recap."""

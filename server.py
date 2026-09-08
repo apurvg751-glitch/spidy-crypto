@@ -204,7 +204,7 @@ async def check_daily_executive_brief_dispatch():
                 if last_brief != today_ist:
                     logger.info(f"🌙 Triggering 11:59 PM IST Daily Executive Brief for {today_ist}...")
                     current_loss = getattr(trade_manager, "current_daily_loss", 0.0)
-                    max_loss = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+                    max_loss = getattr(settings, "MAX_DAILY_LOSS", 300.0)
                     sent = await telegram.send_daily_executive_recap(
                         target_date=today_ist,
                         current_daily_loss=current_loss,
@@ -1014,7 +1014,7 @@ async def api_set_daily_loss(
     db.set_config("daily_loss_date", today_ist)
     db.set_config("daily_loss_amount", str(trade_manager.current_daily_loss))
 
-    max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+    max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
     rem = max(0.0, max_dl - trade_manager.current_daily_loss)
 
     if trade_manager.current_daily_loss >= max_dl:

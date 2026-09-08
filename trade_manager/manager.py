@@ -90,7 +90,7 @@ class TradeManager:
                     loop.create_task(self.telegram.send_midnight_rollover_recap(
                         old_loss=old_loss,
                         new_date=today_ist,
-                        max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 201.0),
+                        max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 300.0),
                         equity=getattr(settings, "ACCOUNT_EQUITY", 4140.0)
                     ))
                 except RuntimeError:
@@ -301,7 +301,7 @@ class TradeManager:
                 consecutive_losses=self.consecutive_losses,
                 last_trade_close_time=self.last_trade_close_time,
                 cooldown_seconds=self.cooldown_seconds,
-                max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 201.0),
+                max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 300.0),
                 target_rr=getattr(winner, "rr", None),
                 grade=getattr(winner, "grade", None),
                 coin=winner.coin
@@ -898,7 +898,7 @@ class TradeManager:
             for s in settings.SYMBOLS:
                 reentry_status[s] = self.reentry_manager.get_market_status(s)
 
-        max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+        max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
         daily_loss_rem = max(0.0, max_dl - self.current_daily_loss)
 
         return {

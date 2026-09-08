@@ -60,7 +60,7 @@ class Settings(BaseModel):
 
     # Position Sizing & Account Risk (Dynamic Margin Band: ₹3,000 to ₹4,500 @ 6x Leverage)
     ACCOUNT_EQUITY: float = float(os.getenv("ACCOUNT_EQUITY", "4500.0"))
-    MAX_RISK_PCT: float = float(os.getenv("MAX_RISK_PCT", "1.5"))
+    MAX_RISK_PCT: float = float(os.getenv("MAX_RISK_PCT", "2.5"))
     MIN_ALLOWED_MARGIN: float = float(os.getenv("MIN_ALLOWED_MARGIN", "3000.0"))
     MAX_ALLOWED_MARGIN: float = float(os.getenv("MAX_ALLOWED_MARGIN", "4500.0"))
     DEFAULT_LEVERAGE: int = int(os.getenv("DEFAULT_LEVERAGE", "6"))
@@ -68,7 +68,7 @@ class Settings(BaseModel):
     # Daily Loss Limit (Active per user instruction) | Consecutive loss halt disabled
     ENABLE_DAILY_LOSS_LIMIT: bool = os.getenv("ENABLE_DAILY_LOSS_LIMIT", "True").lower() in ("true", "1")
     ENABLE_CONSECUTIVE_LOSS_LIMIT: bool = os.getenv("ENABLE_CONSECUTIVE_LOSS_LIMIT", "False").lower() in ("true", "1")
-    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "201.0"))
+    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "300.0"))
     MAX_CONSECUTIVE_LOSSES: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "999"))
     COOLDOWN_SECONDS: int = int(os.getenv("COOLDOWN_SECONDS", "300"))
 

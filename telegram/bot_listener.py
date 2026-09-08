@@ -157,7 +157,7 @@ class TelegramBotListener:
                         if self.trade_manager.db:
                             self.trade_manager.db.set_config("daily_loss_date", today_ist)
                             self.trade_manager.db.set_config("daily_loss_amount", str(round(amt, 2)))
-                        max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+                        max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
                         rem = max(0.0, max_dl - self.trade_manager.current_daily_loss)
                         if self.trade_manager.current_daily_loss >= max_dl:
                             self.trade_manager.is_paused = True
@@ -175,7 +175,7 @@ class TelegramBotListener:
                         await self._send_reply("⚠️ Invalid amount format. Usage: `/setloss 141` or `/loss 141`", chat_id)
                 else:
                     cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
-                    max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+                    max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
                     rem = max(0.0, max_dl - cur_loss)
                     await self._send_reply(
                         f"🛡️ *CURRENT RISK & CAPITAL TELEMETRY*\n\n"
@@ -313,8 +313,8 @@ class TelegramBotListener:
 
         daily_loss_info = {
             "current_daily_loss": getattr(self.trade_manager, "current_daily_loss", 0.0),
-            "max_daily_loss": getattr(settings, "MAX_DAILY_LOSS", 201.0),
-            "daily_loss_remaining": max(0.0, getattr(settings, "MAX_DAILY_LOSS", 201.0) - getattr(self.trade_manager, "current_daily_loss", 0.0))
+            "max_daily_loss": getattr(settings, "MAX_DAILY_LOSS", 300.0),
+            "daily_loss_remaining": max(0.0, getattr(settings, "MAX_DAILY_LOSS", 300.0) - getattr(self.trade_manager, "current_daily_loss", 0.0))
         }
 
         market_zones = {}
@@ -470,7 +470,7 @@ class TelegramBotListener:
         from journal.trade_journal import TradeJournalEngine
         data = TradeJournalEngine.get_daily_trades()
         cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
-        max_loss = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+        max_loss = getattr(settings, "MAX_DAILY_LOSS", 300.0)
         brief_text = format_daily_executive_brief(data, current_daily_loss=cur_loss, max_daily_loss=max_loss)
         await self._send_reply(brief_text, chat_id, reply_markup=get_hud_inline_keyboard())
 
@@ -658,7 +658,7 @@ class TelegramBotListener:
         min_m = getattr(settings, "MIN_ALLOWED_MARGIN", 3000.0)
         max_m = getattr(settings, "MAX_ALLOWED_MARGIN", 4500.0)
         cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
-        max_dl = getattr(settings, "MAX_DAILY_LOSS", 201.0)
+        max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
         rem_loss = max(0.0, max_dl - cur_loss)
 
         bal_inr = 0.0

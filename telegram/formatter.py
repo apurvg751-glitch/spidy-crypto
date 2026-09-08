@@ -267,7 +267,7 @@ def format_hud_telemetry(
 ) -> str:
     """Renders the master interactive HUD status display for `/hud`."""
     current_dl = float(daily_loss_info.get("current_daily_loss", 0.0))
-    max_dl = float(daily_loss_info.get("max_daily_loss", getattr(settings, "MAX_DAILY_LOSS", 201.0)))
+    max_dl = float(daily_loss_info.get("max_daily_loss", getattr(settings, "MAX_DAILY_LOSS", 300.0)))
     rem_dl = float(daily_loss_info.get("daily_loss_remaining", max(0.0, max_dl - current_dl)))
 
     lines = [
@@ -335,7 +335,7 @@ def format_hud_telemetry(
 def format_daily_executive_brief(
     data: dict[str, Any],
     current_daily_loss: float = 0.0,
-    max_daily_loss: float = 201.0
+    max_daily_loss: float = 300.0
 ) -> str:
     """
     Formats the automated 11:59 PM IST Daily Executive Briefing.
