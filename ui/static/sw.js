@@ -1,9 +1,9 @@
 // SPIDY CRYPTO 2.0 - Progressive Web App Service Worker
-const CACHE_NAME = 'spidy-crypto-v2';
+const CACHE_NAME = 'spidy-crypto-v4.1';
 const STATIC_ASSETS = [
   '/',
   '/static/style.css',
-  '/static/app.js',
+  '/static/app.js?v=4.1.0',
   '/static/manifest.json'
 ];
 
@@ -36,6 +36,15 @@ self.addEventListener('fetch', (event) => {
   if (event.request.url.includes('/api/') || event.request.url.includes('/ws')) {
     return;
   }
+
+  // Network-first for page navigation so updates reflect immediately
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       return cachedResponse || fetch(event.request);
