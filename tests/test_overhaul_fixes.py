@@ -293,6 +293,20 @@ def test_telegram_exit_reason_headers_english():
     assert "TRAILING STOP LOSS HIT (PROFIT SECURED 🔒)" in trail_msg
     assert "Realized PnL: +₹1,800.00 🟢" in trail_msg
 
+    # 1b. Trailing Stop Ratcheted / Tightened (Active Trade, not hit)
+    tighten_msg = format_lifecycle_alert(
+        coin="AVAXUSD",
+        direction="LONG",
+        status="TRAILING_STOP",
+        price=7.95,
+        details="Trailing Stop ratcheted: 7.8860 -> 7.8923 (Breakeven Locked)",
+        achieved_r=0.8,
+        entry=7.9264,
+        stop_loss=7.8923
+    )
+    assert "TRAILING STOP TIGHTENED (RISK REDUCED 🛡️)" in tighten_msg
+    assert "TRAILING STOP LOSS HIT" not in tighten_msg
+
     # 2. Original Stop Loss
     stop_msg = format_lifecycle_alert(
         coin="BTCUSD",

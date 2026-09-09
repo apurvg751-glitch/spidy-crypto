@@ -129,7 +129,8 @@ async def test_place_bracket_order_schema(execution_client):
         assert sent_body["stop_loss_order"]["order_type"] == "market_order"
         assert sent_body["stop_loss_order"]["stop_price"] == "104.32"
         assert sent_body["take_profit_order"]["order_type"] in ("limit_order", "market_order")
-        assert sent_body["take_profit_order"]["stop_price"] == "105.74"
+        tp_key = "limit_price" if sent_body["take_profit_order"]["order_type"] == "limit_order" else "stop_price"
+        assert sent_body["take_profit_order"][tp_key] == "105.74"
         await execution_client.close()
 
 

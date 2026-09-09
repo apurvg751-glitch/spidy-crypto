@@ -214,11 +214,12 @@ class DeltaExecutionClient:
         if take_profit_price is not None:
             tp_type = "limit_order" if is_limit_tp else "market_order"
             tp_payload: Dict[str, Any] = {
-                "order_type": tp_type,
-                "stop_price": str(round(take_profit_price, 4))
+                "order_type": tp_type
             }
             if is_limit_tp:
                 tp_payload["limit_price"] = str(round(take_profit_price, 4))
+            else:
+                tp_payload["stop_price"] = str(round(take_profit_price, 4))
             payload["take_profit_order"] = tp_payload
 
         body = json.dumps(payload)
@@ -232,7 +233,7 @@ class DeltaExecutionClient:
                 return {"success": True, "result": data.get("result")}
             else:
                 logger.warning(f"Delta bracket order response HTTP {res.status_code}: {res.text}. Attempting fallback standalone reduce_only SL...")
-                # Fallback: If bracket API fails (e.g. SL above entry), place standalone reduce_only Stop Market order
+                # Fallback: If bracket API fails (e.g. SL above entry), place standalone reduce_only Stop Market order without wiping other orders
                 if stop_loss_price is not None:
                     fallback_res = await self.place_standalone_stop_loss(symbol, stop_loss_price)
                     if fallback_res.get("success"):
@@ -242,14 +243,29 @@ class DeltaExecutionClient:
             logger.error(f"Delta bracket order exception: {e}")
             return {"success": False, "error": str(e)}
 
-    async def place_standalone_stop_loss(self, symbol: str, stop_price: float, side: str = "sell") -> Dict[str, Any]:
-        """Places a standalone reduce_only Stop-Market order (bypasses bracket limits for Breakeven trailing)."""
-        await self.cancel_all_orders(symbol)
+    async def place_standalone_stop_loss(self, symbol: str, stop_price: float, side: str = "sell", size: Optional[int] = None) -> Dict[str, Any]:
+        """Places a standalone reduce_only Stop-Market order without wiping existing orders."""
+        if size is None:
+            try:
+                positions = await self.get_positions()
+                pid = self.get_product_id(symbol)
+                for p in positions:
+                    if p.get("product_id") == pid:
+                        raw_size = int(p.get("size") or 0)
+                        if raw_size != 0:
+                            size = abs(raw_size)
+                            side = "sell" if raw_size > 0 else "buy"
+                        break
+            except Exception as e:
+                logger.warning(f"Failed to fetch position size for standalone SL: {e}")
+        if size is None or size < 1:
+            size = 1
+
         return await self.place_order(
             symbol=symbol,
             side=side,
-            order_type="stop_market_order",
-            size=1, # reduce_only will close remaining position
+            order_type="market_order",
+            size=size,
             stop_price=stop_price,
             reduce_only=True
         )

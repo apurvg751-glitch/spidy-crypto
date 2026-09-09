@@ -171,9 +171,12 @@ def format_lifecycle_alert(
     }.get(status, "🕷️")
 
     # Clear English Lifecycle & Exit Header
-    if "Trailing Stop Loss Hit" in details or "Trailing Stop" in details:
+    if "Trailing Stop Loss Hit" in details:
         header_status = "TRAILING STOP LOSS HIT (PROFIT SECURED 🔒)"
         status_emoji = "📈"
+    elif "Trailing Stop ratcheted" in details or "Trailing Stop tightened" in details or status == "TRAILING_STOP":
+        header_status = "TRAILING STOP TIGHTENED (RISK REDUCED 🛡️)"
+        status_emoji = "🛡️"
     elif "Original Stop Loss Hit" in details or "Stop loss hit" in details:
         header_status = "STOP LOSS HIT (RISK PROTECTED 🛡️)"
         status_emoji = "🛑"
