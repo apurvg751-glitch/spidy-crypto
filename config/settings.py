@@ -69,7 +69,7 @@ class Settings(BaseModel):
     ENABLE_DAILY_LOSS_LIMIT: bool = os.getenv("ENABLE_DAILY_LOSS_LIMIT", "True").lower() in ("true", "1")
     ENABLE_CONSECUTIVE_LOSS_LIMIT: bool = os.getenv("ENABLE_CONSECUTIVE_LOSS_LIMIT", "False").lower() in ("true", "1")
     DEFAULT_MAX_DAILY_LOSS: float = float(os.getenv("DEFAULT_MAX_DAILY_LOSS", "300.0"))
-    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "300.0"))
+    MAX_DAILY_LOSS: float = float(os.getenv("MAX_DAILY_LOSS", "160.0"))
     MIN_REMAINING_DAILY_LOSS_QUOTA: float = float(os.getenv("MIN_REMAINING_DAILY_LOSS_QUOTA", "20.0"))
     MAX_TRADE_LOSS: float = float(os.getenv("MAX_TRADE_LOSS", "125.0"))
     MAX_CONSECUTIVE_LOSSES: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "999"))
