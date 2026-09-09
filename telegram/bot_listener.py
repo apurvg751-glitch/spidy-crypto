@@ -193,7 +193,7 @@ class TelegramBotListener:
                 await self._send_reply(
                     "▶️ *SPIDY BOT POWERED ON / RESUMED*\n\n"
                     "• 24/7 Institutional Scanner is ACTIVE.\n"
-                    "• Global slots are OPEN (0/2).\n"
+                    "• Global slot is OPEN (0/1).\n"
                     f"• Monitoring all {len(settings.SYMBOLS)} Delta Exchange markets! 🚀",
                     chat_id
                 )
@@ -271,7 +271,7 @@ class TelegramBotListener:
                 success, msg = await self.trade_manager.emergency_close("EMERGENCY CLOSED VIA TELEGRAM BUTTON")
                 reply_msg = (
                     f"🛑 *TRADE CLOSED MANUALLY*\n\n{msg}\n\n"
-                    "Global slots are OPEN (0/2). Ready for next setup!"
+                    "Global slot is OPEN (0/1). Ready for next setup!"
                     if success else f"⚠️ {msg}"
                 )
 
@@ -458,8 +458,8 @@ class TelegramBotListener:
             lines.append(f"🔒 *Global Slot*: `1/1 OCCUPIED` ({at.get('coin')} {at.get('direction')})")
             lines.append("• New trade entries are strictly blocked to protect capital.")
         else:
-            lines.append("🟢 *Global Slots*: `0/2 OPEN (ARMED)`")
-            lines.append("• Minimum Threshold: `Score ≥ 85 / 100` | `RR ≥ 1.6R`")
+            lines.append("🟢 *Global Slot*: `0/1 OPEN (ARMED)`")
+            lines.append("• Minimum Threshold: `Score ≥ 80 / 100` | `RR ≥ 1.6R`")
             lines.append("• Immediate notification will fire on valid institutional alignment.")
 
         msg = "\n".join(lines)
@@ -597,7 +597,7 @@ class TelegramBotListener:
                 lines.append(f"• Target 1: *${t1:,.2f}* | Target 2: *${t2:,.2f}*")
                 lines.append("─────────────────────────")
         else:
-            lines.append("🪙 *ACTIVE POSITION*: *NONE (0/2 Global Slots Open)* 🟢")
+            lines.append("🪙 *ACTIVE POSITION*: *NONE (0/1 Global Slot Open)* 🟢")
             lines.append("• *Status*: *SCANNING MARKETS (24/7 Guardian Active)*")
 
             last_trades = self.trade_manager.db.get_history(limit=1)

@@ -307,7 +307,7 @@ def format_hud_telemetry(
         lines.append("")
         lines.append(f"🎯 *Levels*: SL: `${sl:,.2f}` | TP1: `${t1:,.2f}` | TP2: `${t2:,.2f}`")
     else:
-        lines.append("🪙 *ACTIVE POSITION*: *NONE (0/2 Global Slots Open)* 🟢")
+        lines.append("🪙 *ACTIVE POSITION*: *NONE (0/1 Global Slot Open)* 🟢")
         lines.append(f"• Status: *24/7 Scanning Active Across {len(settings.SYMBOLS)} Markets*")
         lines.append("• Filter: *Institutional Displacement & SMT Alignment*")
 

@@ -480,7 +480,7 @@ async def api_trigger_scan():
                 "score": 70 + (confs.passed_count * 4)
             })
 
-    active_info = f"Locked on {trade_manager.active_trade['coin']}" if trade_manager.active_trade else "Slot Open (0/2)"
+    active_info = f"Locked on {trade_manager.active_trade['coin']}" if trade_manager.active_trade else "Slot Open (0/1)"
 
     return {
         "status": "success",
@@ -885,7 +885,7 @@ async def api_close_active_trade():
                 "🛑 *ACTIVE TRADE MANUALLY CANCELLED*\n\n"
                 f"• Action: Active trade closed via admin command\n"
                 f"• Affected Coin: *{closed_coin}*\n"
-                f"• Global Slots: *OPEN (0/2)*\n"
+                f"• Global Slot: *OPEN (0/1)*\n"
                 f"• Bot Status: *WATCHING*\n\n"
                 f"Bot is actively monitoring {', '.join(settings.SYMBOLS)} for institutional setups."
             )
@@ -948,7 +948,7 @@ async def api_resume():
         msg = (
             "▶️ *SPIDY BOT RESUMED / POWERED ON*\n\n"
             "• Action: 24/7 scanner is active across all 6 markets\n"
-            "• Global Slots: *OPEN (0/2)*\n"
+            "• Global Slot: *OPEN (0/1)*\n"
             "• Status: *WATCHING*\n\n"
             "Ready to select high-conviction trades! 🚀"
         )
