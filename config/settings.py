@@ -104,7 +104,7 @@ class Settings(BaseModel):
     # Delta API Live Execution Credentials (Secure base64 fallback for 24/7 Cloud)
     DELTA_API_KEY: str = os.getenv("DELTA_API_KEY") or base64.b64decode("Y3hTeHhueGNYVU05QXlmeVM1OWpVOXRxMFVzd2Ja").decode("utf-8")
     DELTA_API_SECRET: str = os.getenv("DELTA_API_SECRET") or base64.b64decode("b3R6TXc0eWsySGpYazg1ckRJMWM3M0U2TlNVZHp0ckU4ZlBNM2NNRkhaRUpqM1R5NG1OZUhyYzYwOWdq").decode("utf-8")
-    ENABLE_LIVE_EXECUTION: bool = os.getenv("ENABLE_LIVE_EXECUTION", "True").lower() in ("true", "1")
+    ENABLE_LIVE_EXECUTION: bool = os.getenv("ENABLE_LIVE_EXECUTION", "False").lower() in ("true", "1")
 
     # Server / UI & Security
     SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
