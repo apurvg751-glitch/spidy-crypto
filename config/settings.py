@@ -80,7 +80,11 @@ class Settings(BaseModel):
     # Institutional Session Filter (Restricts new entries to London & NY Killzones)
     ENABLE_SESSION_FILTER: bool = os.getenv("ENABLE_SESSION_FILTER", "True").lower() in ("true", "1")
 
-    # Global One-Trade Rule
+    # Risk-Free Slot Release & Concurrency
+    ENABLE_RISK_FREE_SLOT_RELEASE: bool = os.getenv("ENABLE_RISK_FREE_SLOT_RELEASE", "True").lower() in ("true", "1")
+    MAX_CONCURRENT_POSITIONS: int = int(os.getenv("MAX_CONCURRENT_POSITIONS", "2"))
+
+    # Global Risk Rule (Strict 1 Active Risk at a time)
     MAX_ACTIVE_TRADES: int = 1
     SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "False").lower() in ("true", "1")
 

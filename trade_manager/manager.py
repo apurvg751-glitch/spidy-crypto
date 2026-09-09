@@ -42,7 +42,7 @@ class TradeManager:
 
         self._lock = asyncio.Lock()
         self.feed_manager: Optional[Any] = None
-        self.active_trade: Optional[dict[str, Any]] = None
+        self.active_trades: dict[str, dict[str, Any]] = {}
         self.global_status: str = "WATCHING"
         self.is_paused: bool = False
 
@@ -65,6 +65,29 @@ class TradeManager:
 
         # Restore any active trade and daily loss from database upon initialization (Crash Recovery)
         self.restore_state_from_db()
+
+    @property
+    def active_trade(self) -> Optional[dict[str, Any]]:
+        """
+        Backward-compatible property returning the primary trade.
+        Prioritizes any trade that is actively carrying downside risk,
+        or the most recently entered position.
+        """
+        if not self.active_trades:
+            return None
+        for t in self.active_trades.values():
+            if not t.get("be_moved") and not t.get("t1_hit"):
+                return t
+        return list(self.active_trades.values())[-1]
+
+    @active_trade.setter
+    def active_trade(self, val: Optional[dict[str, Any]]):
+        if val is None:
+            self.active_trades.clear()
+        else:
+            coin = val.get("coin")
+            if coin:
+                self.active_trades[coin] = val
 
     def check_daily_loss_reset(self) -> bool:
         """
@@ -186,15 +209,56 @@ class TradeManager:
                         )
                     return None
 
-            # 1. Check if an active trade already exists
-            if self.active_trade is not None and self.active_trade.get("trade_status") in ("WAITING", "ACTIVE"):
-                active_coin = self.active_trade["coin"]
-                active_status = self.active_trade["trade_status"]
-                logger.info(f"Global slot occupied by {active_coin} ({active_status}). Rejecting {len(candidates)} candidate(s).")
+            # 1. Risk-Free Slot Release & Concurrency Check
+            enable_rf = getattr(settings, "ENABLE_RISK_FREE_SLOT_RELEASE", True)
 
+            # Check for trades carrying active downside risk (be_moved False and t1_hit False)
+            risky_trades = [
+                t for t in self.active_trades.values()
+                if t.get("trade_status") in ("WAITING", "ACTIVE")
+                and not (enable_rf and (t.get("be_moved") or t.get("t1_hit")))
+            ]
+
+            if len(risky_trades) >= 1:
+                risky_coin = risky_trades[0]["coin"]
+                risky_status = risky_trades[0]["trade_status"]
+                logger.info(f"Active risk slot occupied by {risky_coin} ({risky_status}). Rejecting {len(candidates)} candidate(s).")
                 for cand in candidates:
                     cand_dict = cand.model_dump()
-                    rejection_reason = f"BLOCKED BY ACTIVE TRADE: {active_coin} is currently in {active_status} status."
+                    rejection_reason = (
+                        f"BLOCKED BY ACTIVE TRADE: {risky_coin} is currently in {risky_status} status. "
+                        f"Slot releases once {risky_coin} secures Breakeven (+0.8R) or reaches TP1 (+1.6R)."
+                    )
+                    self.db.save_setup(
+                        setup_dict=cand_dict,
+                        is_selected=False,
+                        is_rejected=True,
+                        rejection_reason=rejection_reason,
+                        trade_status="BLOCKED BY ACTIVE TRADE"
+                    )
+                return None
+
+            max_positions = getattr(settings, "MAX_CONCURRENT_POSITIONS", 2)
+            if len(self.active_trades) >= max_positions:
+                logger.info(f"Max concurrent positions reached ({len(self.active_trades)}/{max_positions}). Rejecting candidates.")
+                for cand in candidates:
+                    cand_dict = cand.model_dump()
+                    rejection_reason = f"BLOCKED BY ACTIVE TRADE: Maximum {max_positions} positions already open."
+                    self.db.save_setup(
+                        setup_dict=cand_dict,
+                        is_selected=False,
+                        is_rejected=True,
+                        rejection_reason=rejection_reason,
+                        trade_status="BLOCKED BY ACTIVE TRADE"
+                    )
+                return None
+
+            # Filter candidates so we never double-enter the same coin
+            eligible_candidates = [c for c in candidates if c.coin not in self.active_trades]
+            if not eligible_candidates:
+                for cand in candidates:
+                    cand_dict = cand.model_dump()
+                    rejection_reason = f"BLOCKED BY ACTIVE TRADE: {cand.coin} already has an active runner in progress."
                     self.db.save_setup(
                         setup_dict=cand_dict,
                         is_selected=False,
@@ -206,7 +270,7 @@ class TradeManager:
 
             # 2. If multiple candidates trigger concurrently, rank and pick the strongest
             ranked = sorted(
-                candidates,
+                eligible_candidates,
                 key=lambda x: (
                     x.setup_score,
                     x.rr,
@@ -411,6 +475,7 @@ class TradeManager:
                 "fvg_timestamp": getattr(winner, "fvg_timestamp", None),
                 "retest_timestamp": getattr(winner, "retest_timestamp", None)
             }
+            self.active_trades[winner.coin] = active_record
             self.db.set_active_trade(active_record)
 
             self.active_trade = active_record
@@ -512,18 +577,19 @@ class TradeManager:
     async def update_price(self, symbol: str, current_price: float):
         """Monitors incoming price ticks, updates MFE/MAE excursions, and drives state transitions."""
         async with self._lock:
-            if not self.active_trade or self.active_trade.get("coin") != symbol:
+            trade = self.active_trades.get(symbol) or (self.active_trade if self.active_trade and self.active_trade.get("coin") == symbol else None)
+            if not trade:
                 return
 
-            status = self.active_trade.get("trade_status")
-            direction = self.active_trade.get("direction")
-            entry = self.active_trade["entry"]
-            stop = self.active_trade["stop_loss"]
-            t1 = self.active_trade["target_1"]
-            t2 = self.active_trade["target_2"]
-            setup_id = self.active_trade["setup_id"]
+            status = trade.get("trade_status")
+            direction = trade.get("direction")
+            entry = trade["entry"]
+            stop = trade["stop_loss"]
+            t1 = trade["target_1"]
+            t2 = trade["target_2"]
+            setup_id = trade["setup_id"]
 
-            self.active_trade["current_price"] = current_price
+            trade["current_price"] = current_price
 
             # Precise Delta Exchange Point Value & Live PnL Tracking
             from market_data.delta_specs import DeltaPointValueEngine
@@ -532,43 +598,43 @@ class TradeManager:
                 direction=direction,
                 entry=entry,
                 current_price=current_price,
-                margin_used=self.active_trade.get("margin_used"),
-                leverage=self.active_trade.get("leverage")
+                margin_used=trade.get("margin_used"),
+                leverage=trade.get("leverage")
             )
-            self.active_trade["points_moved"] = pnl_calc["points_moved"]
-            self.active_trade["point_val_inr"] = pnl_calc["point_val_inr"]
-            self.active_trade["point_val_usd"] = pnl_calc["point_val_usd"]
-            self.active_trade["delta_contracts"] = pnl_calc["delta_contracts"]
-            self.active_trade["contract_unit"] = pnl_calc["contract_unit"]
-            self.active_trade["point_label"] = pnl_calc["point_label"]
-            self.active_trade["pnl_inr"] = pnl_calc["pnl_inr"]
-            self.active_trade["pnl_usd"] = pnl_calc["pnl_usd"]
-            self.active_trade["pnl_pct"] = pnl_calc["pnl_pct"]
+            trade["points_moved"] = pnl_calc["points_moved"]
+            trade["point_val_inr"] = pnl_calc["point_val_inr"]
+            trade["point_val_usd"] = pnl_calc["point_val_usd"]
+            trade["delta_contracts"] = pnl_calc["delta_contracts"]
+            trade["contract_unit"] = pnl_calc["contract_unit"]
+            trade["point_label"] = pnl_calc["point_label"]
+            trade["pnl_inr"] = pnl_calc["pnl_inr"]
+            trade["pnl_usd"] = pnl_calc["pnl_usd"]
+            trade["pnl_pct"] = pnl_calc["pnl_pct"]
 
             # Track peak favorable and adverse excursion
             if direction == "LONG":
-                self.active_trade["peak_favorable_price"] = max(self.active_trade.get("peak_favorable_price", entry), current_price)
-                self.active_trade["peak_adverse_price"] = min(self.active_trade.get("peak_adverse_price", entry), current_price)
+                trade["peak_favorable_price"] = max(trade.get("peak_favorable_price", entry), current_price)
+                trade["peak_adverse_price"] = min(trade.get("peak_adverse_price", entry), current_price)
             else:
-                self.active_trade["peak_favorable_price"] = min(self.active_trade.get("peak_favorable_price", entry), current_price)
-                self.active_trade["peak_adverse_price"] = max(self.active_trade.get("peak_adverse_price", entry), current_price)
+                trade["peak_favorable_price"] = min(trade.get("peak_favorable_price", entry), current_price)
+                trade["peak_adverse_price"] = max(trade.get("peak_adverse_price", entry), current_price)
 
             if status == "WAITING":
                 dist_pct = abs(current_price - entry) / max(entry, 1.0)
                 if dist_pct <= 0.0035:
-                    await self._transition_to("ACTIVE", current_price, f"Price entered {direction} execution zone ({current_price:.2f}).")
+                    await self._transition_to("ACTIVE", current_price, f"Price entered {direction} execution zone ({current_price:.2f}).", symbol=symbol)
                 elif direction == "LONG" and current_price <= stop:
-                    await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.")
+                    await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.", target_symbol=symbol)
                 elif direction == "SHORT" and current_price >= stop:
-                    await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.")
+                    await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.", target_symbol=symbol)
 
             elif status == "ACTIVE":
-                risk = abs(entry - self.active_trade.get("original_stop", stop))
-                be_threshold = 0.6 if self.active_trade.get("grade") == "B+" else 0.8
+                risk = abs(entry - trade.get("original_stop", stop))
+                be_threshold = 0.6 if trade.get("grade") == "B+" else 0.8
 
                 # 1. Dynamic Breakeven & Trailing Stop Engine
-                peak_fav = self.active_trade.get("peak_favorable_price", current_price)
-                atr = self.active_trade.get("atr", entry * 0.005)
+                peak_fav = trade.get("peak_favorable_price", current_price)
+                atr = trade.get("atr", entry * 0.005)
 
                 candles_5m = None
                 if getattr(self, "feed_manager", None):
@@ -579,8 +645,8 @@ class TradeManager:
                 trail_res = TrailingStopEngine.evaluate_trail(
                     direction=direction,
                     entry=entry,
-                    original_stop=self.active_trade.get("original_stop", stop),
-                    current_stop=self.active_trade["stop_loss"],
+                    original_stop=trade.get("original_stop", stop),
+                    current_stop=trade["stop_loss"],
                     current_price=current_price,
                     peak_favorable_price=peak_fav,
                     atr=atr,
@@ -588,15 +654,18 @@ class TradeManager:
                     symbol=symbol
                 )
                 if trail_res.stop_moved:
-                    old_sl = self.active_trade["stop_loss"]
-                    self.active_trade["stop_loss"] = trail_res.new_stop
-                    self.active_trade["be_moved"] = True
-                    self.db.set_active_trade(self.active_trade)
+                    old_sl = trade["stop_loss"]
+                    trade["stop_loss"] = trail_res.new_stop
+                    is_be_lock = (direction == "LONG" and trail_res.new_stop >= entry) or (direction == "SHORT" and trail_res.new_stop <= entry) or getattr(trail_res, "is_breakeven", False)
+                    if is_be_lock and not trade.get("be_moved"):
+                        trade["be_moved"] = True
+                        logger.info(f"🛡️ [RISK-FREE SLOT RELEASE] {symbol} moved to Breakeven! Downside risk eliminated ($0 risk). 🟢 RISK-FREE SLOT RELEASED for next setup!")
+                    self.db.set_active_trade(trade)
                     logger.info(f"Trailing Stop ratcheted for {symbol}: {format_price(symbol, old_sl)} -> {format_price(symbol, trail_res.new_stop)} [{trail_res.trail_reason}]")
 
                     # Live Delta Exchange Bracket Order Update
                     if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
-                        runner_tp = self.active_trade.get("target_2") if self.active_trade.get("partial_closed") else self.active_trade.get("target_1")
+                        runner_tp = trade.get("target_2") if trade.get("partial_closed") else trade.get("target_1")
                         asyncio.create_task(self.delta_execution.place_bracket_order(
                             symbol=symbol,
                             stop_loss_price=trail_res.new_stop,
@@ -610,22 +679,22 @@ class TradeManager:
                     self._notify_state_change()
 
                 # 2. Automated +1.0R Milestone Rule: Lock 50% Profit, 50% Runner Safe
-                if risk > 0 and not self.active_trade.get("partial_closed"):
+                if risk > 0 and not trade.get("partial_closed"):
                     current_r = ((current_price - entry) / risk) if direction == "LONG" else ((entry - current_price) / risk)
                     if current_r >= 1.0:
-                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=current_r)
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=current_r, symbol=symbol)
 
                 # 2b. 35-Minute Time Stagnation Advisory Alert (Dead Trade Filter)
                 now_ts = int(time.time())
-                act_ts = int(self.active_trade.get("activated_timestamp") or now_ts)
+                act_ts = int(trade.get("activated_timestamp") or now_ts)
                 elapsed_seconds = now_ts - act_ts
                 current_r = ((current_price - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_price) / risk) if risk > 0 else 0.0)
 
                 # Advisory alert at 35 mins (7 closed 5m candles) if trade has not made directional progress
-                if elapsed_seconds >= 2100 and not self.active_trade.get("stagnation_alert_sent") and not self.active_trade.get("partial_closed"):
+                if elapsed_seconds >= 2100 and not trade.get("stagnation_alert_sent") and not trade.get("partial_closed"):
                     if current_r < 0.50:
-                        self.active_trade["stagnation_alert_sent"] = True
-                        self.db.set_active_trade(self.active_trade)
+                        trade["stagnation_alert_sent"] = True
+                        self.db.set_active_trade(trade)
                         duration_mins = int(elapsed_seconds / 60)
                         logger.info(f"35-Minute Stagnation Advisory triggered for {symbol}: held {duration_mins}m, current R={current_r:.2f}")
                         if self.telegram:
@@ -640,14 +709,14 @@ class TradeManager:
                 # Optional Hard Velocity & Stagnation Stop Engine (Guarded by ENABLE_TIME_BASED_STAGNATION)
                 if getattr(settings, "ENABLE_TIME_BASED_STAGNATION", False):
                     # If trade held > 60 mins without hitting +0.5R, ratchet Stop Loss to Breakeven
-                    if elapsed_seconds >= 3600 and current_r < 0.50 and not self.active_trade.get("be_moved"):
+                    if elapsed_seconds >= 3600 and current_r < 0.50 and not trade.get("be_moved"):
                         fee_buf = 0.02 * risk if risk > 0 else 0.0
                         be_level = round_price(symbol, entry + fee_buf if direction == "LONG" else entry - fee_buf)
-                        if (direction == "LONG" and self.active_trade["stop_loss"] < be_level) or (direction == "SHORT" and self.active_trade["stop_loss"] > be_level):
-                            old_sl = self.active_trade["stop_loss"]
-                            self.active_trade["stop_loss"] = be_level
-                            self.active_trade["be_moved"] = True
-                            self.db.set_active_trade(self.active_trade)
+                        if (direction == "LONG" and trade["stop_loss"] < be_level) or (direction == "SHORT" and trade["stop_loss"] > be_level):
+                            old_sl = trade["stop_loss"]
+                            trade["stop_loss"] = be_level
+                            trade["be_moved"] = True
+                            self.db.set_active_trade(trade)
                             logger.info(f"60-Min Stagnation Guard applied for {symbol}: {old_sl} -> {be_level}")
                             await self.telegram.send_trade_lifecycle_update(
                                 symbol, direction, "STAGNATION_BE", current_price, setup_id,
@@ -658,124 +727,138 @@ class TradeManager:
                     # If trade held > 90 mins and still stagnant within +/- 0.25R, scratch at market
                     if elapsed_seconds >= 5400 and (-0.25 <= current_r <= 0.25):
                         logger.info(f"90-Min Stagnation Scratch Exit for {symbol} at {current_price} ({current_r:.2f}R)")
-                        await self._close_trade("COMPLETED" if current_r >= 0 else "STOPPED", current_price, f"90-Min Stagnation Scratch Exit ({current_r:.2f}R)")
+                        await self._close_trade("COMPLETED" if current_r >= 0 else "STOPPED", current_price, f"90-Min Stagnation Scratch Exit ({current_r:.2f}R)", target_symbol=symbol)
                         return
 
                 # 3. Stop Loss Check (tested on pullbacks, not on the exact tick that ratcheted stop)
                 if not trail_res.stop_moved:
-                    if direction == "LONG" and current_price <= self.active_trade["stop_loss"]:
-                        orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
-                        is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] > orig_stop)
+                    if direction == "LONG" and current_price <= trade["stop_loss"]:
+                        orig_stop = float(trade.get("original_stop", trade["stop_loss"]))
+                        is_trailing = trade.get("be_moved") or (trade["stop_loss"] > orig_stop)
                         if is_trailing:
                             reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
-                            await self._close_trade("COMPLETED", current_price, reason)
+                            await self._close_trade("COMPLETED", current_price, reason, target_symbol=symbol)
                         else:
                             reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
-                            await self._close_trade("STOPPED", current_price, reason)
+                            await self._close_trade("STOPPED", current_price, reason, target_symbol=symbol)
                         return
-                    elif direction == "SHORT" and current_price >= self.active_trade["stop_loss"]:
-                        orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
-                        is_trailing = self.active_trade.get("be_moved") or (self.active_trade["stop_loss"] < orig_stop)
+                    elif direction == "SHORT" and current_price >= trade["stop_loss"]:
+                        orig_stop = float(trade.get("original_stop", trade["stop_loss"]))
+                        is_trailing = trade.get("be_moved") or (trade["stop_loss"] < orig_stop)
                         if is_trailing:
                             reason = f"Trailing Stop Loss Hit at {format_price(symbol, current_price)} (Profit Secured)"
-                            await self._close_trade("COMPLETED", current_price, reason)
+                            await self._close_trade("COMPLETED", current_price, reason, target_symbol=symbol)
                         else:
                             reason = f"Original Stop Loss Hit at {format_price(symbol, current_price)} (Risk Protection)"
-                            await self._close_trade("STOPPED", current_price, reason)
+                            await self._close_trade("STOPPED", current_price, reason, target_symbol=symbol)
                         return
 
                 # 3. Target 2 Hit (Full Target)
                 if direction == "LONG" and current_price >= t2:
-                    await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)")
+                    await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)", target_symbol=symbol)
                     return
                 elif direction == "SHORT" and current_price <= t2:
-                    await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)")
+                    await self._close_trade("COMPLETED", current_price, f"Target 2 hit at {format_price(symbol, current_price)} (Full Profit)", target_symbol=symbol)
                     return
 
                 # 4. Target 1 Hit (Bank 50% Profit, 50% Runner Safe)
-                elif direction == "LONG" and current_price >= t1 and not self.active_trade.get("t1_hit"):
-                    self.active_trade["t1_hit"] = True
-                    if not self.active_trade.get("partial_closed"):
-                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0)
-                    elif self.active_trade["stop_loss"] < entry:
-                        self.active_trade["stop_loss"] = entry
-                        self.active_trade["be_moved"] = True
-                        self.db.set_active_trade(self.active_trade)
+                elif direction == "LONG" and current_price >= t1 and not trade.get("t1_hit"):
+                    trade["t1_hit"] = True
+                    trade["be_moved"] = True
+                    logger.info(f"💰 [RISK-FREE SLOT RELEASE] {symbol} hit Target 1! 50% profit banked. 🟢 RISK-FREE SLOT RELEASED for next setup!")
+                    if not trade.get("partial_closed"):
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0, symbol=symbol)
+                    elif trade["stop_loss"] < entry:
+                        trade["stop_loss"] = entry
+                        self.db.set_active_trade(trade)
                         await self.telegram.send_trade_lifecycle_update(
                             symbol, direction, "TARGET HIT", current_price, setup_id,
                             details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
                         )
                         self._notify_state_change()
 
-                elif direction == "SHORT" and current_price <= t1 and not self.active_trade.get("t1_hit"):
-                    self.active_trade["t1_hit"] = True
-                    if not self.active_trade.get("partial_closed"):
-                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0)
-                    elif self.active_trade["stop_loss"] > entry:
-                        self.active_trade["stop_loss"] = entry
-                        self.active_trade["be_moved"] = True
-                        self.db.set_active_trade(self.active_trade)
+                elif direction == "SHORT" and current_price <= t1 and not trade.get("t1_hit"):
+                    trade["t1_hit"] = True
+                    trade["be_moved"] = True
+                    logger.info(f"💰 [RISK-FREE SLOT RELEASE] {symbol} hit Target 1! 50% profit banked. 🟢 RISK-FREE SLOT RELEASED for next setup!")
+                    if not trade.get("partial_closed"):
+                        await self._execute_partial(pct=0.50, current_price=current_price, achieved_r=1.0, symbol=symbol)
+                    elif trade["stop_loss"] > entry:
+                        trade["stop_loss"] = entry
+                        self.db.set_active_trade(trade)
                         await self.telegram.send_trade_lifecycle_update(
                             symbol, direction, "TARGET HIT", current_price, setup_id,
                             details=f"Target 1 reached at {format_price(symbol, current_price)}! Stop moved to Breakeven ({format_price(symbol, entry)})."
                         )
                         self._notify_state_change()
 
-    async def _transition_to(self, new_status: str, price: float, details: str):
-        if not self.active_trade:
+    async def _transition_to(self, new_status: str, price: float, details: str, symbol: Optional[str] = None):
+        target_coin = symbol or (self.active_trade["coin"] if self.active_trade else None)
+        trade = (self.active_trades.get(target_coin) if target_coin else None) or self.active_trade
+        if not trade:
             return
-        self.active_trade["trade_status"] = new_status
+        trade["trade_status"] = new_status
         self.global_status = new_status
-        self.db.set_active_trade(self.active_trade)
-        self.db.update_setup_status(self.active_trade["setup_id"], new_status)
+        self.db.set_active_trade(trade)
+        self.db.update_setup_status(trade["setup_id"], new_status)
 
-        logger.info(f"Trade {self.active_trade['coin']} transitioned to {new_status} at price {price:.2f}: {details}")
+        logger.info(f"Trade {trade['coin']} transitioned to {new_status} at price {price:.2f}: {details}")
         await self.telegram.send_trade_lifecycle_update(
-            coin=self.active_trade["coin"],
-            direction=self.active_trade["direction"],
+            coin=trade["coin"],
+            direction=trade["direction"],
             status=new_status,
             price=price,
-            setup_id=self.active_trade["setup_id"],
+            setup_id=trade["setup_id"],
             details=details,
-            entry=self.active_trade.get("entry"),
-            stop_loss=self.active_trade.get("stop_loss"),
-            position_units=self.active_trade.get("position_units"),
-            margin_used=self.active_trade.get("margin_used"),
-            leverage=self.active_trade.get("leverage"),
-            target_1=self.active_trade.get("target_1"),
-            target_2=self.active_trade.get("target_2"),
-            htf_walls=self.active_trade.get("htf_walls") or self.active_trade.get("htf_barriers")
+            entry=trade.get("entry"),
+            stop_loss=trade.get("stop_loss"),
+            position_units=trade.get("position_units"),
+            margin_used=trade.get("margin_used"),
+            leverage=trade.get("leverage"),
+            target_1=trade.get("target_1"),
+            target_2=trade.get("target_2"),
+            htf_walls=trade.get("htf_walls") or trade.get("htf_barriers")
         )
         self._notify_state_change()
 
-    async def _close_trade(self, terminal_status: str, price: float, details: str, custom_r: Optional[float] = None, custom_pnl: Optional[float] = None):
-        if not self.active_trade:
+    async def _close_trade(
+        self,
+        terminal_status: str,
+        price: float,
+        details: str,
+        custom_r: Optional[float] = None,
+        custom_pnl: Optional[float] = None,
+        target_symbol: Optional[str] = None
+    ):
+        target_coin = target_symbol or (self.active_trade["coin"] if self.active_trade else None)
+        trade = (self.active_trades.get(target_coin) if target_coin else None) or self.active_trade
+        if not trade:
             return
-        coin = self.active_trade["coin"]
-        direction = self.active_trade["direction"]
-        setup_id = self.active_trade["setup_id"]
-        entry = float(self.active_trade["entry"])
-        stop = float(self.active_trade["stop_loss"])
+        coin = trade["coin"]
+        direction = trade["direction"]
+        setup_id = trade["setup_id"]
+        entry = float(trade["entry"])
+        stop = float(trade["stop_loss"])
         risk = abs(entry - stop)
-        model_id = self.active_trade.get("model_id", "MODEL_1")
-        score = self.active_trade.get("setup_score", 80)
-        confirmations = self.active_trade.get("confirmations_count", 5)
+        model_id = trade.get("model_id", "MODEL_1")
+        score = trade.get("setup_score", 80)
+        confirmations = trade.get("confirmations_count", 5)
         now = int(time.time())
 
         risk_unit = settings.ACCOUNT_EQUITY * (settings.MAX_RISK_PCT / 100.0)
 
-        original_stop = float(self.active_trade.get("original_stop", stop))
+        original_stop = float(trade.get("original_stop", stop))
         risk_dist = abs(entry - original_stop)
         price_diff = (price - entry) if direction.upper() == "LONG" else (entry - price)
-        margin_used = float(self.active_trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
-        leverage = int(self.active_trade.get("leverage") or settings.DEFAULT_LEVERAGE)
-        position_units = float(self.active_trade.get("position_units") or 0.0)
+        margin_used = float(trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
+        leverage = int(trade.get("leverage") or settings.DEFAULT_LEVERAGE)
+        position_units = float(trade.get("position_units") or 0.0)
         pct_move = (price_diff / entry) if entry > 0 else 0.0
         pct_risk = (risk_dist / entry) if entry > 0 else 0.0
 
         actual_risk_inr = margin_used * leverage * pct_risk
         exact_pnl_inr = margin_used * leverage * pct_move
-        realized_partial = float(self.active_trade.get("realized_partial_pnl") or 0.0)
+        realized_partial = float(trade.get("realized_partial_pnl") or 0.0)
         exact_pnl_inr += realized_partial
 
         # Dynamic Variable Realized PnL & R-Multiple Calculation
@@ -786,7 +869,7 @@ class TradeManager:
         elif terminal_status == "COMPLETED":
             won = True
             raw_r = price_diff / max(risk_dist, 1e-4)
-            achieved_r = round(raw_r if raw_r > 0 else float(self.active_trade.get("rr", 2.0)), 2)
+            achieved_r = round(raw_r if raw_r > 0 else float(trade.get("rr", 2.0)), 2)
             pnl = round(exact_pnl_inr, 2)
             self.consecutive_losses = 0
         elif terminal_status == "STOPPED":
@@ -827,8 +910,8 @@ class TradeManager:
             else:
                 terminal_status = "CANCELLED"
 
-        peak_fav = self.active_trade.get("peak_favorable_price", entry)
-        peak_adv = self.active_trade.get("peak_adverse_price", entry)
+        peak_fav = trade.get("peak_favorable_price", entry)
+        peak_adv = trade.get("peak_adverse_price", entry)
         mfe = round(abs(peak_fav - entry) / max(risk_dist, 1e-4), 2)
         mae = round(abs(peak_adv - entry) / max(risk_dist, 1e-4), 2)
 
@@ -857,7 +940,7 @@ class TradeManager:
                 trade_id=setup_id,
                 result=terminal_status,
                 close_price=price,
-                candidate_or_trade=self.active_trade
+                candidate_or_trade=trade
             )
         except Exception as e:
             logger.error(f"Failed to register trade close in ReentryManager: {e}")
@@ -865,7 +948,7 @@ class TradeManager:
         # Live Delta Execution Cleanup (Cancel orders & close position)
         if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
             try:
-                contracts = max(1, int(self.active_trade.get("delta_contracts") or 1))
+                contracts = max(1, int(trade.get("delta_contracts") or 1))
                 exit_side = "sell" if direction.upper() == "LONG" else "buy"
                 asyncio.create_task(self.delta_execution.cancel_all_orders(symbol=coin))
                 asyncio.create_task(self.delta_execution.place_order(
@@ -878,16 +961,21 @@ class TradeManager:
             except Exception as e:
                 logger.error(f"Error executing live Delta cleanup on trade close: {e}")
 
-        # Clear active trade from DB and memory -> Global Lock Released!
-        self.db.clear_active_trade()
-        self.active_trade = None
-        self.global_status = "WATCHING"
+        # Remove closed trade from active_trades memory
+        self.active_trades.pop(coin, None)
 
-        # 1-Trade Auto-Halt Guard: Automatically pause Spidy after this trade completes
-        if getattr(settings, "SINGLE_TRADE_MODE", True):
-            self.is_paused = True
-            self.global_status = "STOPPED"
-            logger.info("🛑 [SINGLE TRADE MODE] Auto-paused Spidy after trade finished.")
+        if self.active_trades:
+            # Remaining position is still running!
+            remaining = list(self.active_trades.values())[0]
+            self.db.set_active_trade(remaining)
+            self.global_status = "ACTIVE"
+        else:
+            self.db.clear_active_trade()
+            self.global_status = "WATCHING"
+            if getattr(settings, "SINGLE_TRADE_MODE", False):
+                self.is_paused = True
+                self.global_status = "STOPPED"
+                logger.info("🛑 [SINGLE TRADE MODE] Auto-paused Spidy after trade finished.")
 
         logger.info(f"Trade {coin} finished ({terminal_status}) at price {price:.2f}. Units: {position_units:.4g}, Margin: ₹{margin_used:.2f}, Achieved R: {achieved_r:.2f}, PnL: ₹{pnl:.2f}. Global lock RELEASED.")
         await self.telegram.send_trade_lifecycle_update(
@@ -924,12 +1012,22 @@ class TradeManager:
         max_dl = getattr(settings, "MAX_DAILY_LOSS", 300.0)
         daily_loss_rem = max(0.0, max_dl - self.current_daily_loss)
 
+        # Count risky trades (trades that have not yet reached breakeven or taken T1)
+        risky_count = sum(1 for t in self.active_trades.values() if not t.get("be_moved") and not t.get("t1_hit"))
+        max_concurrent = getattr(settings, "MAX_CONCURRENT_POSITIONS", 2)
+        risk_slot_available = (risky_count == 0) and (len(self.active_trades) < max_concurrent)
+
         return {
             "global_status": self.global_status,
             "is_paused": self.is_paused,
             "has_active_trade": self.active_trade is not None,
             "active_trade": self.active_trade,
+            "active_trades": list(self.active_trades.values()),
+            "active_trades_count": len(self.active_trades),
+            "risk_slot_available": risk_slot_available,
+            "risk_free_runner_active": any(t.get("be_moved") for t in self.active_trades.values()),
             "max_allowed_trades": settings.MAX_ACTIVE_TRADES,
+            "max_concurrent_positions": max_concurrent,
             "current_daily_loss": round(self.current_daily_loss, 2),
             "max_daily_loss": max_dl,
             "daily_loss_remaining": round(daily_loss_rem, 2),
@@ -938,16 +1036,17 @@ class TradeManager:
             "reentry_status": reentry_status
         }
 
-    async def move_to_breakeven(self, protect_fees: bool = False) -> tuple[bool, str]:
+    async def move_to_breakeven(self, protect_fees: bool = False, symbol: Optional[str] = None) -> tuple[bool, str]:
         """Manually moves the active trade's stop loss to entry price (or fee-protected level if protect_fees=True)."""
         async with self._lock:
-            if not self.active_trade:
+            trade = (self.active_trades.get(symbol) if symbol else None) or self.active_trade
+            if not trade:
                 return False, "No active trade to move to Breakeven."
 
-            entry = float(self.active_trade["entry"])
-            coin = self.active_trade["coin"]
-            direction = self.active_trade["direction"]
-            orig_stop = float(self.active_trade.get("original_stop", self.active_trade["stop_loss"]))
+            entry = float(trade["entry"])
+            coin = trade["coin"]
+            direction = trade["direction"]
+            orig_stop = float(trade.get("original_stop", trade["stop_loss"]))
             risk = abs(entry - orig_stop)
 
             if protect_fees:
@@ -956,14 +1055,14 @@ class TradeManager:
             else:
                 be_level = entry
 
-            self.active_trade["stop_loss"] = be_level
-            self.active_trade["be_moved"] = True
-            self.db.set_active_trade(self.active_trade)
+            trade["stop_loss"] = be_level
+            trade["be_moved"] = True
+            self.db.set_active_trade(trade)
 
             # Live Delta Breakeven Stop Adjustment
             if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
                 try:
-                    runner_tp = self.active_trade.get("target_2") if self.active_trade.get("partial_closed") else self.active_trade.get("target_1")
+                    runner_tp = trade.get("target_2") if trade.get("partial_closed") else trade.get("target_1")
                     asyncio.create_task(self.delta_execution.place_bracket_order(
                         symbol=coin,
                         stop_loss_price=be_level,
@@ -1060,65 +1159,66 @@ class TradeManager:
         self,
         pct: float = 0.50,
         current_price: Optional[float] = None,
-        achieved_r: Optional[float] = None
+        achieved_r: Optional[float] = None,
+        symbol: Optional[str] = None
     ) -> tuple[bool, str]:
         """
         Internal partial execution method (called by automated +1.0R milestone or manual trigger).
         Banks specified percentage (e.g. 50%) in realized profit, reduces margin to remaining runner (50%),
         ensures Stop Loss is locked at Breakeven + fee buffer (+0.05R), and notifies via Telegram.
         """
-        if not self.active_trade:
+        trade = (self.active_trades.get(symbol) if symbol else None) or self.active_trade
+        if not trade:
             return False, "No active trade to take partial profit on."
-        if self.active_trade.get("partial_closed"):
+        if trade.get("partial_closed"):
             return False, "Partial profit already secured on this trade."
 
-        coin = self.active_trade["coin"]
-        direction = self.active_trade["direction"]
-        entry = float(self.active_trade["entry"])
-        stop = float(self.active_trade["stop_loss"])
-        orig_stop = float(self.active_trade.get("original_stop", stop))
+        coin = trade["coin"]
+        direction = trade["direction"]
+        entry = float(trade["entry"])
+        stop = float(trade["stop_loss"])
+        orig_stop = float(trade.get("original_stop", stop))
         risk = abs(entry - orig_stop)
-        current_p = current_price if current_price is not None else float(self.active_trade.get("current_price") or self.active_trade.get("peak_favorable_price") or entry)
+        current_p = current_price if current_price is not None else float(trade.get("current_price") or trade.get("peak_favorable_price") or entry)
 
         if achieved_r is None:
             achieved_r = ((current_p - entry) / risk) if (direction == "LONG" and risk > 0) else (((entry - current_p) / risk) if risk > 0 else 1.0)
         achieved_r = round(achieved_r, 2)
 
         # 1. Update partial state
-        self.active_trade["partial_closed"] = True
-        self.active_trade["partial_pct"] = pct
-        self.active_trade["partial_price"] = current_p
-        self.active_trade["partial_r"] = achieved_r
+        trade["partial_closed"] = True
+        trade["be_moved"] = True
+        trade["partial_pct"] = pct
+        trade["partial_price"] = current_p
+        trade["partial_r"] = achieved_r
 
-        orig_margin = float(self.active_trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
-        leverage = int(self.active_trade.get("leverage") or settings.DEFAULT_LEVERAGE)
+        orig_margin = float(trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
+        leverage = int(trade.get("leverage") or settings.DEFAULT_LEVERAGE)
         closed_margin = orig_margin * pct
         remaining_margin = round(orig_margin * (1.0 - pct), 2)
-        self.active_trade["margin_used"] = remaining_margin
+        trade["margin_used"] = remaining_margin
 
         pct_move = ((current_p - entry) / entry) if (direction == "LONG" and entry > 0) else (((entry - current_p) / entry) if entry > 0 else 0.0)
         realized_pnl_inr = round(closed_margin * leverage * pct_move, 2)
-        self.active_trade["realized_partial_pnl"] = realized_pnl_inr
+        trade["realized_partial_pnl"] = realized_pnl_inr
 
         # 2. Ensure Stop Loss is moved to at least Breakeven + fee buffer (+0.08% / +0.05R)
         fee_buf = max(0.05 * risk, entry * 0.0008) if risk > 0 else (entry * 0.0008)
         if direction == "LONG":
             be_sl = round_price(coin, entry + fee_buf)
-            if self.active_trade["stop_loss"] < be_sl:
-                self.active_trade["stop_loss"] = be_sl
-                self.active_trade["be_moved"] = True
+            if trade["stop_loss"] < be_sl:
+                trade["stop_loss"] = be_sl
         else:
             be_sl = round_price(coin, entry - fee_buf)
-            if self.active_trade["stop_loss"] > be_sl:
-                self.active_trade["stop_loss"] = be_sl
-                self.active_trade["be_moved"] = True
+            if trade["stop_loss"] > be_sl:
+                trade["stop_loss"] = be_sl
 
-        self.db.set_active_trade(self.active_trade)
+        self.db.set_active_trade(trade)
 
         # 3. Live Delta Partial Execution & Bracket Update (50% Bank & 50% Runner)
         if self.delta_execution and getattr(settings, "ENABLE_LIVE_EXECUTION", False):
             try:
-                total_contracts = max(1, int(round(self.active_trade.get("delta_contracts") or 1)))
+                total_contracts = max(1, int(round(trade.get("delta_contracts") or 1)))
                 closed_contracts = int(round(total_contracts * pct))
                 if closed_contracts == 0 and total_contracts > 1:
                     closed_contracts = 1
@@ -1126,7 +1226,7 @@ class TradeManager:
                 exit_side = "sell" if direction.upper() == "LONG" else "buy"
                 if closed_contracts > 0 and total_contracts > 1:
                     remaining_contracts = total_contracts - closed_contracts
-                    self.active_trade["delta_contracts"] = remaining_contracts
+                    trade["delta_contracts"] = remaining_contracts
                     logger.info(f"🚀 [DELTA LIVE] Banking 50% partial: closing {closed_contracts} contracts of {coin} (remaining runner: {remaining_contracts})")
                     asyncio.create_task(self.delta_execution.place_order(
                         symbol=coin,
@@ -1136,11 +1236,11 @@ class TradeManager:
                         reduce_only=True
                     ))
 
-                runner_tp = self.active_trade.get("target_2")
-                logger.info(f"🛡️ [DELTA LIVE] Advancing bracket to Breakeven SL ({self.active_trade['stop_loss']}) & Runner TP2 ({runner_tp})")
+                runner_tp = trade.get("target_2")
+                logger.info(f"🛡️ [DELTA LIVE] Advancing bracket to Breakeven SL ({trade['stop_loss']}) & Runner TP2 ({runner_tp})")
                 asyncio.create_task(self.delta_execution.place_bracket_order(
                     symbol=coin,
-                    stop_loss_price=self.active_trade["stop_loss"],
+                    stop_loss_price=trade["stop_loss"],
                     take_profit_price=runner_tp
                 ))
             except Exception as e:
@@ -1162,7 +1262,7 @@ class TradeManager:
                 remaining_pct=remaining_pct,
                 realized_pnl_inr=realized_pnl_inr,
                 achieved_r=achieved_r,
-                new_stop=self.active_trade["stop_loss"]
+                new_stop=trade["stop_loss"]
             )
         except Exception as e:
             logger.error(f"Failed to dispatch partial profit Telegram alert: {e}")
@@ -1170,45 +1270,56 @@ class TradeManager:
         self._notify_state_change()
         return True, f"Secured {secured_pct}% partial profit on {coin} at {format_price(coin, current_p)}!"
 
-    async def close_partial(self, pct: float = 0.50) -> tuple[bool, str]:
+    async def close_partial(self, pct: float = 0.50, symbol: Optional[str] = None) -> tuple[bool, str]:
         """Manually closes a percentage (e.g. 50%) of the active position."""
         async with self._lock:
-            return await self._execute_partial(pct=pct)
+            return await self._execute_partial(pct=pct, symbol=symbol)
 
-
-    async def emergency_close(self, reason: str = "Manually Closed via Telegram Button") -> tuple[bool, str]:
-        """Instantly closes the active trade and clears the global slot, calculating live PnL."""
+    async def emergency_close(self, reason: str = "Manually Closed via Telegram Button", symbol: Optional[str] = None) -> tuple[bool, str]:
+        """Instantly closes active trade(s) and clears the global slot, calculating live PnL."""
         async with self._lock:
-            if not self.active_trade:
+            symbols_to_close = [symbol] if symbol else list(self.active_trades.keys())
+            if not symbols_to_close and self.active_trade:
+                symbols_to_close = [self.active_trade["coin"]]
+            if not symbols_to_close:
                 return False, "No active trade running."
 
-            coin = self.active_trade["coin"]
-            entry = float(self.active_trade["entry"])
-            stop = float(self.active_trade["stop_loss"])
-            original_stop = float(self.active_trade.get("original_stop", stop))
-            direction = self.active_trade["direction"]
-            risk = abs(entry - original_stop)
+            results = []
+            for coin in symbols_to_close:
+                trade = self.active_trades.get(coin) or self.active_trade
+                if not trade or trade.get("coin") != coin:
+                    continue
 
-            # Fetch live market price right now from Delta Exchange
-            close_price = self.active_trade.get("current_price", entry)
-            try:
-                res = await self.telegram.client.get(f"{settings.DELTA_REST_URL}/v2/tickers/{coin}", timeout=2.0)
-                if res.status_code == 200:
-                    mark = float(res.json().get("result", {}).get("mark_price", 0.0) or res.json().get("result", {}).get("close", 0.0))
-                    if mark > 0:
-                        close_price = mark
-            except Exception:
-                pass
+                entry = float(trade["entry"])
+                stop = float(trade["stop_loss"])
+                original_stop = float(trade.get("original_stop", stop))
+                direction = trade["direction"]
+                risk = abs(entry - original_stop)
 
-            price_diff = (close_price - entry) if direction == "LONG" else (entry - close_price)
-            achieved_r = round(price_diff / max(risk, 1e-4), 2)
-            margin_used = float(self.active_trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
-            leverage = int(self.active_trade.get("leverage") or settings.DEFAULT_LEVERAGE)
-            pct_move = (price_diff / entry) if entry > 0 else 0.0
-            pnl_inr = round(margin_used * leverage * pct_move, 2)
-            terminal_status = "COMPLETED" if achieved_r > 0 else ("STOPPED" if achieved_r < 0 else "CANCELLED")
+                # Fetch live market price right now from Delta Exchange
+                close_price = trade.get("current_price", entry)
+                try:
+                    res = await self.telegram.client.get(f"{settings.DELTA_REST_URL}/v2/tickers/{coin}", timeout=2.0)
+                    if res.status_code == 200:
+                        mark = float(res.json().get("result", {}).get("mark_price", 0.0) or res.json().get("result", {}).get("close", 0.0))
+                        if mark > 0:
+                            close_price = mark
+                except Exception:
+                    pass
 
-            await self._close_trade(terminal_status, close_price, reason, custom_r=achieved_r, custom_pnl=pnl_inr)
-            price_fmt = format_price(coin, close_price)
-            pnl_sign = "+" if pnl_inr >= 0 else ""
-            return True, f"Closed {coin} at {price_fmt} ({pnl_sign}{achieved_r:+.2f}R | {pnl_sign}₹{pnl_inr:,.2f})!"
+                price_diff = (close_price - entry) if direction == "LONG" else (entry - close_price)
+                achieved_r = round(price_diff / max(risk, 1e-4), 2)
+                margin_used = float(trade.get("margin_used") or settings.MAX_ALLOWED_MARGIN)
+                leverage = int(trade.get("leverage") or settings.DEFAULT_LEVERAGE)
+                pct_move = (price_diff / entry) if entry > 0 else 0.0
+                pnl_inr = round(margin_used * leverage * pct_move, 2)
+                terminal_status = "COMPLETED" if achieved_r > 0 else ("STOPPED" if achieved_r < 0 else "CANCELLED")
+
+                await self._close_trade(terminal_status, close_price, reason, custom_r=achieved_r, custom_pnl=pnl_inr, target_symbol=coin)
+                price_fmt = format_price(coin, close_price)
+                pnl_sign = "+" if pnl_inr >= 0 else ""
+                results.append(f"Closed {coin} at {price_fmt} ({pnl_sign}{achieved_r:+.2f}R | {pnl_sign}₹{pnl_inr:,.2f})")
+
+            if not results:
+                return False, "No matching active trade found."
+            return True, "; ".join(results) + "!"
