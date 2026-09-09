@@ -5,7 +5,7 @@
 **Exchange:** Delta Exchange India  
 **Allocated Margin:** ₹4,200.00  
 **Leverage:** 6x Leverage  
-**Autonomous Live Execution:** 🔴 PERMANENTLY DISABLED (100% Manual Execution)  
+**Autonomous Live Execution:** 🟢 ARMED & OPERATIONAL (Maker Limit Orders + Breathing Room Guard Active)  
 
 ---
 
@@ -77,7 +77,7 @@
 
 ## 🛡️ Permanent Risk & Execution Safeguards Deployed
 
-1. **Autonomous Live Execution OFF**: All trades, entries, and exits must be executed manually by the trader.
+1. **Autonomous Live Execution Armed**: Live execution is activated with strict institutional protections: Maker Limit Orders (`post_only=True`) to eliminate taker fee burn, Even-Lot contract sizing, and 0.30R runaway order auto-cancellation.
 2. **Breathing Room Guard (< 0.8R)**: Stop losses are strictly locked at original invalidation levels. Trailing stops cannot move on short-term noise.
 3. **5-Minute Wick Trailing Abolished**: Trailing on swings is restricted to confirmed runners (>= 1.5R) on 15M/1H candles.
 4. **Maker Limit Orders Only**: Entries and targets utilize post_only=True to lock in Delta's 0.02% maker rate and end the ₹81 fee drain.
