@@ -307,3 +307,19 @@ class DeltaExecutionClient:
         except Exception as e:
             logger.error(f"Delta get_positions error: {e}")
             return []
+
+    async def get_fills(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """Fetches recent trade fills and exact fee deductions from Delta Exchange India."""
+        path = "/v2/fills"
+        query = f"limit={limit}"
+        headers = self._get_headers("GET", path, query=f"?{query}")
+        try:
+            res = await self.client.get(f"{self.base_url}{path}?{query}", headers=headers)
+            if res.status_code == 200:
+                data = res.json()
+                if data.get("success"):
+                    return data.get("result", [])
+            return []
+        except Exception as e:
+            logger.error(f"Delta get_fills error: {e}")
+            return []

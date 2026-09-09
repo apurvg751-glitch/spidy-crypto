@@ -357,6 +357,26 @@ async def test_delta_auth():
         await client.close()
 
 
+@app.get("/api/fills")
+async def api_trade_fills(limit: int = 20):
+    """Fetches real money fills and exact exchange fee breakdown directly from Delta Exchange India."""
+    from market_data.delta_execution import DeltaExecutionClient
+    client = DeltaExecutionClient()
+    try:
+        fills = await client.get_fills(limit=limit)
+        total_fee = sum(float(f.get("fee", 0.0) or 0.0) for f in fills)
+        return {
+            "status": "success",
+            "count": len(fills),
+            "total_fee": round(total_fee, 4),
+            "fills": fills
+        }
+    except Exception as e:
+        return {"status": "exception", "error": str(e)}
+    finally:
+        await client.close()
+
+
 @app.get("/api/performance")
 async def api_performance():
     """Returns official verified institutional track record and performance metrics."""
