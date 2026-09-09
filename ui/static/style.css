@@ -1080,59 +1080,101 @@ footer {
 }
 
 @media (max-width: 768px) {
+  /* Stitch Mobile Cockpit Baseline */
   body {
-    padding-bottom: 74px; /* clearance for sticky dock */
+    background-color: #0a0e17;
+    padding-bottom: 78px; /* clearance for sticky bottom dock */
+    -webkit-font-smoothing: antialiased;
   }
 
+  /* Stitch Mobile TopAppBar */
   header {
-    padding: 12px 16px;
+    position: sticky;
+    top: 0;
+    z-index: 900;
+    padding: 10px 14px;
+    background: rgba(15, 19, 28, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  .logo-container {
+    gap: 10px;
+  }
+
+  .logo-spider {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+    background: #181b25;
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
   }
 
   .logo-title {
-    font-size: 17px;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: var(--cyan-neon);
+    text-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
   }
 
   .logo-subtitle {
     font-size: 9px;
+    letter-spacing: 0.04em;
+    color: #9ca3af;
+  }
+
+  .header-status-pills {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .header-status-pills .pill {
+    padding: 4px 8px;
+    font-size: 10px;
+    background: #181b25;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
   }
 
   .container {
-    padding: 14px 14px;
-    gap: 16px;
+    padding: 12px 12px;
+    gap: 12px;
   }
 
-  /* Horizontal swipe for market cards with snap */
-  .market-strip {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 6px;
-  }
-
-  .market-strip::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .market-strip::-webkit-scrollbar-thumb {
-    background: var(--border-glow);
-    border-radius: 4px;
-  }
-
-  .market-card {
-    min-width: 155px;
-    flex: 0 0 155px;
-    scroll-snap-align: start;
-    padding: 12px 14px;
-  }
-
-  .card-price {
-    font-size: 18px;
-  }
-
+  /* Stitch Mobile War Room Hero Card */
   .war-room-banner {
-    padding: 16px;
+    background: #1c1f29;
+    border: 1px solid rgba(132, 148, 149, 0.35);
+    border-radius: 14px;
+    padding: 14px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
     flex-direction: column;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+
+  .war-room-banner::before {
+    content: '';
+    position: absolute;
+    top: -40px;
+    right: -40px;
+    width: 120px;
+    height: 120px;
+    background: rgba(0, 240, 255, 0.12);
+    border-radius: 50%;
+    filter: blur(30px);
+    pointer-events: none;
   }
 
   .war-room-left {
@@ -1143,61 +1185,327 @@ footer {
     min-width: 100%;
   }
 
-  .war-room-pnl-box {
-    text-align: left;
+  .war-room-badge-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
   }
 
+  .war-room-dir-badge {
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 10px;
+    border-radius: 6px;
+    letter-spacing: 0.05em;
+  }
+
+  .war-room-dir-badge.LONG {
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid var(--emerald-neon);
+    color: var(--emerald-neon);
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+  }
+
+  .war-room-dir-badge.SHORT {
+    background: rgba(244, 63, 94, 0.18);
+    border: 1px solid var(--rose-neon);
+    color: var(--rose-neon);
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.3);
+  }
+
+  .war-room-pill {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: #181b25;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Stitch Mobile Telemetry Grid */
+  .war-room-matrix {
+    background: #181b25;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .matrix-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .matrix-lbl {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: #9ca3af;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+
+  .matrix-val {
+    font-size: 14px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+  }
+
+  /* Target Convergence Track */
+  .trade-journey-container {
+    background: #181b25;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+
+  .journey-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: #9ca3af;
+    margin-bottom: 6px;
+    font-weight: 700;
+  }
+
+  .journey-track {
+    height: 8px;
+    background: #0a0e17;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    overflow: hidden;
+    position: relative;
+    padding: 1px;
+  }
+
+  .journey-progress-bar {
+    height: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, #00f0ff 0%, #10b981 100%);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  }
+
+  .journey-milestones {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    text-align: center;
+    margin-top: 6px;
+    font-size: 8px;
+    font-family: var(--font-mono);
+  }
+
+  /* Stitch Glowing Live INR PnL Box */
+  .war-room-pnl-box {
+    background: #181b25;
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    box-shadow: inset 0 0 15px rgba(16, 185, 129, 0.06);
+  }
+
+  .pnl-subhead {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: #9ca3af;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+
+  .pnl-main-value {
+    font-size: 20px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    color: var(--emerald-neon);
+    text-shadow: 0 0 12px rgba(16, 185, 129, 0.5);
+    text-align: right;
+  }
+
+  .pnl-r-value {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--cyan-neon);
+    text-align: right;
+    font-weight: 700;
+  }
+
+  /* Mobile War Room Tactical Buttons */
+  .war-room-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .wt-act-btn {
+    height: 42px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    transition: transform 0.1s ease;
+  }
+
+  .wt-act-btn:active {
+    transform: scale(0.96);
+  }
+
+  /* Standby Banner on Mobile */
+  .standby-banner {
+    background: #181b25;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 12px;
+    padding: 12px 14px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  }
+
+  /* Stitch Mobile Watchlist (Horizontal Swipeable Carousel) */
+  .market-strip {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    gap: 10px;
+    padding-bottom: 8px;
+    margin-bottom: 2px;
+  }
+
+  .market-strip::-webkit-scrollbar {
+    height: 3px;
+  }
+
+  .market-strip::-webkit-scrollbar-thumb {
+    background: rgba(0, 240, 255, 0.3);
+    border-radius: 3px;
+  }
+
+  .market-card {
+    min-width: 165px;
+    flex: 0 0 165px;
+    scroll-snap-align: start;
+    background: #1c1f29;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .market-card.selected {
+    border-color: var(--cyan-neon);
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.25);
+    background: #1f2937;
+  }
+
+  .card-price {
+    font-size: 18px;
+    font-weight: 800;
+  }
+
+  /* Compact Chart Viewport for Mobile Cockpits */
   .canvas-container {
-    height: 300px;
+    height: 290px;
   }
 
   .levels-strip {
     grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
-  /* Show Mobile Quick Dock */
+  /* Mobile Risk Management Grid */
+  .risk-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .risk-stat-box {
+    background: #181b25;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 10px;
+  }
+
+  /* Stitch Mobile Quick Action Dock (Fixed Bottom Navigation) */
   .mobile-quick-dock {
     display: flex;
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 62px;
-    background: rgba(8, 12, 22, 0.95);
-    border-top: 1px solid var(--border-glow);
-    box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.65);
+    height: 64px;
+    background: rgba(15, 19, 28, 0.96);
+    border-top: 1px solid rgba(0, 240, 255, 0.25);
+    box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     z-index: 1000;
     align-items: center;
     justify-content: space-around;
-    padding: 6px 12px;
+    padding: 6px 10px;
   }
 
   .dock-btn {
     flex: 1;
-    max-width: 68px;
-    height: 44px;
+    max-width: 66px;
+    height: 46px;
     border-radius: 8px;
     font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 800;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: #181b25;
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: #fff;
     cursor: pointer;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    margin: 0 3px;
+    margin: 0 2px;
     transition: all 0.15s ease;
   }
 
-  .dock-btn.be { border-color: var(--cyan-neon); color: var(--cyan-neon); }
-  .dock-btn.partial { border-color: var(--emerald-neon); color: var(--emerald-neon); }
-  .dock-btn.close { border-color: var(--rose-neon); color: var(--rose-neon); }
-  .dock-btn.scan { border-color: var(--purple-neon); color: var(--purple-neon); }
-  .dock-btn.pin { border-color: var(--amber-neon); color: var(--amber-neon); }
+  .dock-btn.be {
+    border-color: rgba(0, 240, 255, 0.5);
+    color: var(--cyan-neon);
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.15);
+  }
+
+  .dock-btn.partial {
+    border-color: rgba(16, 185, 129, 0.5);
+    color: var(--emerald-neon);
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.15);
+  }
+
+  .dock-btn.close {
+    border-color: rgba(244, 63, 94, 0.5);
+    color: var(--rose-neon);
+    box-shadow: 0 0 8px rgba(244, 63, 94, 0.15);
+  }
+
+  .dock-btn.scan {
+    border-color: rgba(168, 85, 247, 0.5);
+    color: var(--purple-neon);
+    box-shadow: 0 0 8px rgba(168, 85, 247, 0.15);
+  }
+
+  .dock-btn.pin {
+    border-color: rgba(245, 158, 11, 0.5);
+    color: var(--amber-neon);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.15);
+  }
 
   .dock-btn:active {
     transform: scale(0.92);
@@ -1206,7 +1514,7 @@ footer {
 
 @media (max-width: 480px) {
   .header-status-pills {
-    display: none; /* Hide cluttered header pills on small phones; accessed via dock & war room */
+    display: none; /* Hide cluttered header pills on ultra-compact phones; all telemetry available in War Room & Dock */
   }
 
   .war-room-matrix {
@@ -1214,6 +1522,6 @@ footer {
   }
 
   .journey-milestones {
-    font-size: 8px;
+    font-size: 7.5px;
   }
 }
