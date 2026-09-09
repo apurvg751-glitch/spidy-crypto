@@ -7,6 +7,7 @@ from market_data.models import Candle
 class KillZoneStatus(BaseModel):
     session_name: str          # "ASIAN_SESSION", "LONDON_OPEN", "NEW_YORK_OPEN", "OFF_HOURS"
     is_active_kill_zone: bool
+    is_tradeable: bool = False
     description: str
     confidence_multiplier: float
     asian_high: Optional[float] = None
@@ -19,10 +20,10 @@ class KillZoneEngine:
     Institutional Session & Macro Kill Zone Timing Engine.
     Aligns trading signals with high-volume institutional liquidity windows.
     Times in IST (UTC+5:30):
-      - Asian Session: 05:30 - 11:30 IST (Liquidity Accumulation)
-      - London Open (Judas Sweep): 13:30 - 16:30 IST
-      - New York AM Open (Expansion): 19:00 - 22:30 IST
-      - Off-Hours / Dead Liquidity: 23:00 - 05:00 IST
+      - Asian Session: 05:30 - 11:30 IST (Liquidity Accumulation - Entries Blocked)
+      - London Open (Judas Sweep & Clean Expansion): 12:30 - 16:30 IST
+      - New York AM Open (Major Institutional Expansion): 17:30 - 22:30 IST
+      - Off-Hours / Dead Liquidity: 22:30 - 05:30 IST (Entries Blocked)
     """
 
     IST_OFFSET = timedelta(hours=5, minutes=30)
@@ -40,22 +41,22 @@ class KillZoneEngine:
         if 5.5 <= time_decimal < 11.5:
             return (
                 "ASIAN_SESSION",
-                True,
-                "Asian Session (Liquidity Accumulation & Range Creation)",
-                1.0
+                False,
+                "Asian Session (Liquidity Accumulation & Range Creation - Entries Blocked)",
+                0.60
             )
 
-        # 2. London Open Kill Zone (13:30 - 16:30 IST)
-        elif 13.5 <= time_decimal < 16.5:
+        # 2. London Open Kill Zone (12:30 - 16:30 IST)
+        elif 12.5 <= time_decimal < 16.5:
             return (
                 "LONDON_OPEN",
                 True,
-                "London Open Kill Zone (Judas Swing & High/Low of Day Formation)",
+                "London Open Kill Zone (Judas Swing & Clean Expansion)",
                 1.25
             )
 
-        # 3. New York AM Open Kill Zone (19:00 - 22:30 IST)
-        elif 19.0 <= time_decimal < 22.5:
+        # 3. New York AM Open Kill Zone (17:30 - 22:30 IST)
+        elif 17.5 <= time_decimal < 22.5:
             return (
                 "NEW_YORK_OPEN",
                 True,
@@ -63,14 +64,15 @@ class KillZoneEngine:
                 1.30
             )
 
-        # 4. Off-Hours / Low Liquidity Window
+        # 4. Off-Hours / Low Liquidity Window (Entries Blocked)
         else:
             return (
                 "OFF_HOURS",
                 False,
-                "Off-Hours / Low Institutional Volume Window",
-                0.85
+                "Off-Hours / Low Institutional Volume Window (Entries Blocked)",
+                0.50
             )
+
 
     @classmethod
     def calculate_asian_range(cls, candles_15m: List[Candle]) -> tuple[Optional[float], Optional[float]]:
@@ -108,6 +110,7 @@ class KillZoneEngine:
         return KillZoneStatus(
             session_name=session_name,
             is_active_kill_zone=is_active,
+            is_tradeable=(session_name in ("LONDON_OPEN", "NEW_YORK_OPEN")),
             description=desc,
             confidence_multiplier=mult,
             asian_high=ash,

@@ -30,12 +30,14 @@ class TradeManager:
         db: Optional[Database] = None,
         telegram: Optional[TelegramNotifier] = None,
         on_state_change: Optional[Callable[[dict[str, Any]], None]] = None,
-        cooldown_seconds: Optional[int] = None
+        cooldown_seconds: Optional[int] = None,
+        enforce_session_filter: Optional[bool] = None
     ):
         self.db = db or Database()
         self.telegram = telegram or TelegramNotifier(db=self.db)
         self.on_state_change = on_state_change
         self.cooldown_seconds = cooldown_seconds if cooldown_seconds is not None else settings.COOLDOWN_SECONDS
+        self.enforce_session_filter: bool = enforce_session_filter if enforce_session_filter is not None else getattr(settings, "ENABLE_SESSION_FILTER", True)
         self.reentry_manager = ReentryManager(db=self.db)
 
         self._lock = asyncio.Lock()
@@ -163,6 +165,27 @@ class TradeManager:
             return None
 
         async with self._lock:
+            # 0. Check Hard Institutional Session Filter Gate (London & NY Killzones Only)
+            if self.enforce_session_filter:
+                from market_data.session_filter import SessionFilterEngine
+                session_info = SessionFilterEngine.evaluate_session()
+                if not session_info.is_trading_allowed:
+                    logger.info(f"Session Filter: New trades blocked outside Killzones ({session_info.session_label}).")
+                    for cand in candidates:
+                        cand_dict = cand.model_dump()
+                        rejection_reason = (
+                            f"BLOCKED BY SESSION FILTER: {session_info.session_label}. "
+                            f"Entries strictly permitted during London Killzone (12:30-16:30 IST) and New York Killzone (17:30-22:30 IST)."
+                        )
+                        self.db.save_setup(
+                            setup_dict=cand_dict,
+                            is_selected=False,
+                            is_rejected=True,
+                            rejection_reason=rejection_reason,
+                            trade_status="BLOCKED_BY_SESSION_FILTER"
+                        )
+                    return None
+
             # 1. Check if an active trade already exists
             if self.active_trade is not None and self.active_trade.get("trade_status") in ("WAITING", "ACTIVE"):
                 active_coin = self.active_trade["coin"]

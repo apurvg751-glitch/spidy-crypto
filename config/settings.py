@@ -77,6 +77,9 @@ class Settings(BaseModel):
     ALLOW_TREND_CONTINUATION_REENTRY: bool = os.getenv("ALLOW_TREND_CONTINUATION_REENTRY", "False").lower() in ("true", "1")
     MAX_OVEREXTENSION_ATR_RATIO: float = float(os.getenv("MAX_OVEREXTENSION_ATR_RATIO", "2.5"))
 
+    # Institutional Session Filter (Restricts new entries to London & NY Killzones)
+    ENABLE_SESSION_FILTER: bool = os.getenv("ENABLE_SESSION_FILTER", "True").lower() in ("true", "1")
+
     # Global One-Trade Rule
     MAX_ACTIVE_TRADES: int = 1
     SINGLE_TRADE_MODE: bool = os.getenv("SINGLE_TRADE_MODE", "False").lower() in ("true", "1")
