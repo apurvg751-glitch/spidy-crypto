@@ -304,7 +304,13 @@ class TradeManager:
                 btc_state = self.feed_manager.get_market_state("BTCUSD")
                 btc_candles = btc_state.candles_15m if btc_state else []
                 from strategy.btc_anchor import BtcAnchorEngine
-                btc_res = BtcAnchorEngine.evaluate_btc_alignment(winner.coin, winner.direction, btc_candles)
+                btc_res = BtcAnchorEngine.evaluate_btc_alignment(
+                    symbol=winner.coin,
+                    direction=winner.direction,
+                    btc_candles_15m=btc_candles,
+                    setup_score=winner.setup_score,
+                    model_id=getattr(winner, "model_id", "")
+                )
                 if not btc_res.is_allowed:
                     logger.warning(f"Winning setup {winner.coin} blocked by BTC Mother-Ship: {btc_res.rejection_reason}")
                     winner_dict = winner.model_dump()

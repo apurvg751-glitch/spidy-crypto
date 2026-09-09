@@ -54,3 +54,28 @@ def test_btc_anchor_permits_altcoin_long_when_btc_bullish():
     res = BtcAnchorEngine.evaluate_btc_alignment("SOLUSD", "LONG", candles)
     assert res.is_allowed is True
     assert res.btc_trend == "BULLISH"
+
+
+def test_high_conviction_setup_overrides_mild_btc_bias():
+    # BTC slightly bullish (last close 79471 > EMA20 79243, ~0.28% extension)
+    candles = []
+    base_price = 79000.0
+    base_time = 1700000000
+    for i in range(35):
+        price = base_price + (i * 10.0)
+        candles.append(_make_candle(base_time + (i * 900), price - 5, price + 10, price - 10, price))
+
+    # Standard low-conviction SHORT is blocked by bullish BTC
+    res_low = BtcAnchorEngine.evaluate_btc_alignment("ETHUSD", "SHORT", candles, setup_score=65)
+    assert res_low.is_allowed is False
+    assert "BLOCKED BY BTC MACRO ANCHOR" in res_low.rejection_reason
+
+    # High-conviction SHORT (Score 90) is PERMITTED
+    res_high = BtcAnchorEngine.evaluate_btc_alignment("ETHUSD", "SHORT", candles, setup_score=90)
+    assert res_high.is_allowed is True
+    assert "High-conviction setup" in res_high.reason
+
+    # Model 11 (Judas Swing) or Model 14 (SMT Divergence) is PERMITTED
+    res_model11 = BtcAnchorEngine.evaluate_btc_alignment("ETHUSD", "SHORT", candles, setup_score=75, model_id="MODEL_11")
+    assert res_model11.is_allowed is True
+    assert "MODEL_11" in res_model11.reason
