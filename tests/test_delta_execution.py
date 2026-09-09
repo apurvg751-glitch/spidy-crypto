@@ -229,3 +229,67 @@ async def test_trailing_stop_updates_delta_bracket(temp_db):
         take_profit_price=115.0
     )
 
+
+@pytest.mark.asyncio
+async def test_waiting_limit_order_cancelled_on_runaway(temp_db):
+    """Verifies that a WAITING limit order is cancelled if price runs away by > 0.35R."""
+    import time
+    from trade_manager.manager import TradeManager
+    tm = TradeManager(db=temp_db)
+    tm.active_trade = {
+        "setup_id": "TEST_WAITING_RUNAWAY",
+        "coin": "ETHUSD",
+        "direction": "LONG",
+        "entry": 2500.0,
+        "stop_loss": 2480.0,
+        "original_stop": 2480.0,
+        "target_1": 2535.0,
+        "target_2": 2560.0,
+        "trade_status": "WAITING",
+        "margin_used": 2520.0,
+        "leverage": 6,
+        "delta_contracts": 2,
+        "activated_timestamp": int(time.time())
+    }
+    tm.active_trades["ETHUSD"] = tm.active_trade
+
+    # Risk is 20.0 pts. 0.35R is 7.0 pts. At 2508.0 (+0.4R), price ran away without filling entry
+    await tm.update_price("ETHUSD", 2508.0)
+    assert tm.active_trade is None
+    assert tm.global_status == "WATCHING"
+
+
+@pytest.mark.asyncio
+async def test_maker_order_refuses_market_taker_fallback(temp_db):
+    """Verifies that a failed Limit Maker order NEVER executes a market taker order."""
+    from trade_manager.manager import TradeManager
+    tm = TradeManager(db=temp_db)
+    tm.delta_execution = AsyncMock()
+    tm.delta_execution.place_order.return_value = {"success": False, "error": "PostOnly would cross book"}
+
+    setup_mock = MagicMock()
+    setup_mock.coin = "AVAXUSD"
+    setup_mock.direction = "LONG"
+    setup_mock.entry = 7.92
+    setup_mock.stop_loss = 7.88
+    setup_mock.target_1 = 7.98
+
+    pv_mock = MagicMock()
+    pv_mock.delta_contracts = 29.0  # Odd number of contracts
+
+    await tm._submit_live_order(setup_mock, pv_mock)
+
+    # Must be called once with limit_order post_only=True and size=28 (rounded even), never market_order
+    assert tm.delta_execution.place_order.call_count == 1
+    tm.delta_execution.place_order.assert_called_once_with(
+        symbol="AVAXUSD",
+        side="buy",
+        order_type="limit_order",
+        limit_price=7.92,
+        size=28,  # 29 rounded to even 28 for clean 50% TP
+        post_only=True,
+        bracket_stop_loss_price=7.88,
+        bracket_take_profit_price=7.98
+    )
+
+

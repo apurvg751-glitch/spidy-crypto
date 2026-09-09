@@ -520,7 +520,12 @@ class TradeManager:
 
             side = "buy" if setup.direction.upper() == "LONG" else "sell"
             raw_contracts = getattr(pv, "delta_contracts", 1)
-            size = max(1, int(round(raw_contracts)))
+            # Round to even number of contracts when >= 2 so 50% partial TP splits cleanly without orphan contracts
+            if raw_contracts >= 2.0:
+                size = max(2, int(round(raw_contracts / 2.0)) * 2)
+            else:
+                size = max(1, int(round(raw_contracts)))
+
             logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} LIMIT Maker entry: size={size} contracts @ {setup.entry}")
             res = await self.delta_execution.place_order(
                 symbol=setup.coin,
@@ -533,15 +538,8 @@ class TradeManager:
                 bracket_take_profit_price=setup.target_1
             )
             if not res.get("success"):
-                logger.info(f"Limit Maker entry could not post, executing market order: {res.get('error')}")
-                res = await self.delta_execution.place_order(
-                    symbol=setup.coin,
-                    side=side,
-                    order_type="market_order",
-                    size=size,
-                    bracket_stop_loss_price=setup.stop_loss,
-                    bracket_take_profit_price=setup.target_1
-                )
+                logger.warning(f"Limit Maker entry could not post ({res.get('error')}). Refusing market taker fallback to prevent fee drain.")
+                return
             if res.get("success"):
                 order_data = res.get("order", {})
                 order_id = order_data.get("id")
@@ -638,13 +636,26 @@ class TradeManager:
                 trade["peak_adverse_price"] = max(trade.get("peak_adverse_price", entry), current_price)
 
             if status == "WAITING":
-                dist_pct = abs(current_price - entry) / max(entry, 1.0)
-                if dist_pct <= 0.0035:
+                risk_dist = abs(entry - stop)
+                runaway_dist = risk_dist * 0.30
+                time_waiting = int(time.time()) - int(trade.get("activated_timestamp", time.time()))
+
+                # For LONG, limit fill occurs when price touches or dips to entry
+                # For SHORT, limit fill occurs when price touches or rallies to entry
+                is_filled = (direction == "LONG" and current_price <= entry * 1.0008) or (direction == "SHORT" and current_price >= entry * 0.9992)
+
+                if is_filled:
                     await self._transition_to("ACTIVE", current_price, f"Price entered {direction} execution zone ({current_price:.2f}).", symbol=symbol)
                 elif direction == "LONG" and current_price <= stop:
                     await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.", target_symbol=symbol)
                 elif direction == "SHORT" and current_price >= stop:
                     await self._close_trade("CANCELLED", current_price, "Price hit stop before entry triggered.", target_symbol=symbol)
+                elif direction == "LONG" and current_price >= entry + runaway_dist:
+                    await self._close_trade("CANCELLED", current_price, f"Limit order cancelled: Price ran away by +0.35R ({current_price:.4f} > {entry + runaway_dist:.4f}) without filling entry.", target_symbol=symbol)
+                elif direction == "SHORT" and current_price <= entry - runaway_dist:
+                    await self._close_trade("CANCELLED", current_price, f"Limit order cancelled: Price ran away by +0.35R ({current_price:.4f} < {entry - runaway_dist:.4f}) without filling entry.", target_symbol=symbol)
+                elif time_waiting > 900:  # 15-minute timeout
+                    await self._close_trade("CANCELLED", current_price, "Limit order cancelled: 15-minute wait timeout reached without entry fill.", target_symbol=symbol)
 
             elif status == "ACTIVE":
                 risk = abs(entry - trade.get("original_stop", stop))
@@ -988,9 +999,11 @@ class TradeManager:
         if self.active_trades:
             # Remaining position is still running!
             remaining = list(self.active_trades.values())[0]
+            self.active_trade = remaining
             self.db.set_active_trade(remaining)
             self.global_status = "ACTIVE"
         else:
+            self.active_trade = None
             self.db.clear_active_trade()
             self.global_status = "WATCHING"
             if getattr(settings, "SINGLE_TRADE_MODE", False):
