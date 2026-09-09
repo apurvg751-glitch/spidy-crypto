@@ -116,12 +116,15 @@ class BarrierEngine:
         atr: float = 0.0,
         dealing_range: Optional[DealingRange] = None,
         candles_1h: list[Candle] | None = None,
-        candles_4h: list[Candle] | None = None
+        candles_4h: list[Candle] | None = None,
+        is_breakout_model: bool = False
     ) -> BarrierValidationResult:
         """
         Validates whether current price has adequate clearance (room to run)
         without running directly into a brick-wall ceiling or support floor.
         Now includes 1H/4H institutional displacement origins as HTF barriers.
+        Breakout and momentum continuation models bypass the internal 75%/25% roof/floor ban,
+        but remain strictly subject to overhead ceiling and support floor clearance checks.
         """
         if not candles_15m or len(candles_15m) < 10 or current_price <= 0:
             return BarrierValidationResult(
@@ -129,8 +132,8 @@ class BarrierEngine:
                 reason="Insufficient structural data; neutral clearance"
             )
 
-        # 1. Whole Structure Range Check (Top 25% vs Bottom 25%)
-        if dealing_range and dealing_range.range_span > 0:
+        # 1. Whole Structure Range Check (Top 25% vs Bottom 25%) - applied to pullback/reversal models
+        if dealing_range and dealing_range.range_span > 0 and not is_breakout_model:
             pos_pct = (current_price - dealing_range.range_low) / dealing_range.range_span
             if direction.upper() == "LONG" and pos_pct >= 0.75:
                 return BarrierValidationResult(

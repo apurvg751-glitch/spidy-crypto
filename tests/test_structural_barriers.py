@@ -112,3 +112,14 @@ def test_whole_structure_roof_and_floor_zone_hard_bans():
     res_short = BarrierEngine.validate_room_to_run("SHORT", 76300.0, candles, atr=150.0, dealing_range=dr)
     assert res_short.is_valid is False
     assert "FLOOR ZONE" in res_short.reason
+
+    # BREAKOUT MODELS: Should bypass roof/floor zone ban
+    res_long_breakout = BarrierEngine.validate_room_to_run(
+        "LONG", 77700.0, candles, atr=150.0, dealing_range=dr, is_breakout_model=True
+    )
+    assert res_long_breakout.is_valid is True
+
+    res_short_breakout = BarrierEngine.validate_room_to_run(
+        "SHORT", 76300.0, candles, atr=150.0, dealing_range=dr, is_breakout_model=True
+    )
+    assert res_short_breakout.is_valid is True

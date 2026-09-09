@@ -643,6 +643,9 @@ async def api_analysis(symbol: str):
     direction = active_t.get("direction") if is_active else ("LONG" if (m.mtf_context and m.mtf_context.exec_context_15m == "Bullish") else "SHORT")
     base_score = active_t.get("setup_score", 70 + (confs.passed_count * 4)) if is_active else (70 + (confs.passed_count * 4))
 
+    active_model = active_t.get("model_id", "") if is_active else ""
+    is_breakout = active_model in ("MODEL_2", "MODEL_5", "MODEL_10")
+
     barrier_res = BarrierEngine.validate_room_to_run(
         direction=direction,
         current_price=price,
@@ -650,7 +653,8 @@ async def api_analysis(symbol: str):
         atr=atr,
         dealing_range=dr,
         candles_1h=m.candles_1h or [],
-        candles_4h=m.candles_4h or []
+        candles_4h=m.candles_4h or [],
+        is_breakout_model=is_breakout
     )
 
     grade_res = SetupGradingEngine.grade_setup(

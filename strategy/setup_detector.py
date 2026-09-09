@@ -338,6 +338,9 @@ class SetupDetector:
         for m in models:
             cand = m.evaluate(closed_market)
             if cand and cand.is_valid:
+                # Check if setup is a breakout or momentum continuation model
+                is_breakout = cand.model_id in ("MODEL_2", "MODEL_5", "MODEL_10")
+
                 # Validate Structural Ceiling/Floor Barrier & Room to Run
                 barrier_res = BarrierEngine.validate_room_to_run(
                     direction=cand.direction,
@@ -346,7 +349,8 @@ class SetupDetector:
                     atr=cand.score_breakdown.atr_value if hasattr(cand.score_breakdown, "atr_value") else (cand.entry * 0.005),
                     dealing_range=dr,
                     candles_1h=market.candles_1h or [],
-                    candles_4h=market.candles_4h or []
+                    candles_4h=market.candles_4h or [],
+                    is_breakout_model=is_breakout
                 )
 
                 # HARD REJECTION GATE 1: Barrier in path (No room to run before hitting ceiling/floor)
@@ -355,8 +359,9 @@ class SetupDetector:
                     continue
 
                 # HARD REJECTION GATE 2: Dealing Range Premium/Discount Guard
-                # Never take a LONG in Deep Premium (> 55%) or SHORT in Deep Discount (< 45%)
-                if dr:
+                # Pullback/Reversal models: Never take a LONG in Deep Premium (> 55%) or SHORT in Deep Discount (< 45%)
+                # Breakout/Continuation models (MODEL_2, MODEL_5, MODEL_10) legitimately initiate outside equilibrium
+                if dr and not is_breakout:
                     if cand.direction == "LONG" and dr.current_position_pct > 0.55:
                         logger.info(f"Setup {cand.id} ({cand.coin}) HARD REJECTED: LONG in Premium ({dr.current_position_pct*100:.1f}% > 55%)")
                         continue
