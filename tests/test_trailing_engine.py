@@ -128,3 +128,35 @@ def test_structural_trailing_lower_high_short():
     assert res.new_stop < 99.75
     assert "Lower High" in res.trail_reason
 
+
+def test_developing_trade_full_breathing_room_below_0_8r():
+    from tests.conftest import make_candle
+    # Replicate the exact AVAX scenario:
+    # Entry 7.9264, Original Stop 7.888 (Risk = 0.0384)
+    # Price rises to 7.946 (+0.51R favorable)
+    # Even if 5M or 15M candles form swing lows around 7.91,
+    # the engine MUST REFUSE to move stop loss (stop_moved=False).
+    candles = [
+        make_candle(1, 7.92, 7.93, 7.91, 7.925),
+        make_candle(2, 7.925, 7.94, 7.92, 7.935),
+        make_candle(3, 7.935, 7.945, 7.93, 7.94),
+        make_candle(4, 7.94, 7.946, 7.925, 7.93),
+        make_candle(5, 7.93, 7.935, 7.910, 7.92), # Swing low at 7.910
+        make_candle(6, 7.92, 7.945, 7.92, 7.94),
+    ]
+
+    res = TrailingStopEngine.evaluate_trail(
+        direction="LONG",
+        entry=7.9264,
+        original_stop=7.8880,
+        current_stop=7.8880,
+        current_price=7.9300,
+        peak_favorable_price=7.9460, # 0.51R peak
+        atr=0.04,
+        candles_5m=candles,
+        symbol="AVAXUSD"
+    )
+    assert res.stop_moved is False
+    assert res.new_stop == 7.8880
+    assert "Breathing Room Active" in res.trail_reason
+

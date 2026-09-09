@@ -89,12 +89,14 @@ async def test_hybrid_market_entry_execution(temp_db):
 
     await tm._submit_live_order(setup_mock, pv_mock)
 
-    # Verify market order placed immediately with bracket parameters (atomic execution)
+    # Verify Limit Maker order placed immediately with bracket parameters (atomic maker execution)
     tm.delta_execution.place_order.assert_called_once_with(
         symbol="SOLUSD",
         side="buy",
-        order_type="market_order",
+        order_type="limit_order",
+        limit_price=105.50,
         size=2,
+        post_only=True,
         bracket_stop_loss_price=105.20,
         bracket_take_profit_price=106.50
     )

@@ -521,15 +521,27 @@ class TradeManager:
             side = "buy" if setup.direction.upper() == "LONG" else "sell"
             raw_contracts = getattr(pv, "delta_contracts", 1)
             size = max(1, int(round(raw_contracts)))
-            logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} MARKET entry: size={size} contracts")
+            logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} LIMIT Maker entry: size={size} contracts @ {setup.entry}")
             res = await self.delta_execution.place_order(
                 symbol=setup.coin,
                 side=side,
-                order_type="market_order",
+                order_type="limit_order",
+                limit_price=setup.entry,
                 size=size,
+                post_only=True,
                 bracket_stop_loss_price=setup.stop_loss,
                 bracket_take_profit_price=setup.target_1
             )
+            if not res.get("success"):
+                logger.info(f"Limit Maker entry could not post, executing market order: {res.get('error')}")
+                res = await self.delta_execution.place_order(
+                    symbol=setup.coin,
+                    side=side,
+                    order_type="market_order",
+                    size=size,
+                    bracket_stop_loss_price=setup.stop_loss,
+                    bracket_take_profit_price=setup.target_1
+                )
             if res.get("success"):
                 order_data = res.get("order", {})
                 order_id = order_data.get("id")
@@ -643,10 +655,12 @@ class TradeManager:
                 atr = trade.get("atr", entry * 0.005)
 
                 candles_5m = None
+                candles_15m = None
                 if getattr(self, "feed_manager", None):
                     m_state = self.feed_manager.get_market_state(symbol)
-                    if m_state and m_state.candles_5m:
+                    if m_state:
                         candles_5m = m_state.candles_5m
+                        candles_15m = getattr(m_state, "candles_15m", None)
 
                 trail_res = TrailingStopEngine.evaluate_trail(
                     direction=direction,
@@ -657,6 +671,7 @@ class TradeManager:
                     peak_favorable_price=peak_fav,
                     atr=atr,
                     candles_5m=candles_5m,
+                    candles_15m=candles_15m,
                     symbol=symbol
                 )
                 if trail_res.stop_moved:

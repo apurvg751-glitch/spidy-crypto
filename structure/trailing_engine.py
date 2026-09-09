@@ -16,6 +16,7 @@ class TrailingResult:
     trail_reason: str
     locked_r: float
     achieved_r: float
+    is_breakeven: bool = False
 
 
 class TrailingStopEngine:
@@ -38,11 +39,12 @@ class TrailingStopEngine:
         peak_favorable_price: float,
         atr: float,
         candles_5m: Optional[List[Candle]] = None,
+        candles_15m: Optional[List[Candle]] = None,
         symbol: str = "ETHUSD"
     ) -> TrailingResult:
         risk = abs(entry - original_stop)
         if risk <= 0:
-            return TrailingResult(current_stop, False, "Zero risk", 0.0, 0.0)
+            return TrailingResult(current_stop, False, "Zero risk", 0.0, 0.0, False)
 
         # 1. Compute current achieved R from peak favorable price
         if direction == "LONG":
@@ -52,9 +54,23 @@ class TrailingStopEngine:
         
         achieved_r = max(0.0, fav_distance / risk)
 
-        # 2. Apex Milestone Ratchets (3-Stage Scaler + 5R Runner Protection)
+        # FULL BREATHING ROOM GUARD (INSTITUTIONAL RULE):
+        # When trade is developing (achieved_r < 0.8R), Stop Loss is STRICTLY LOCKED at original invalidation!
+        # NO structural trailing, wick ratchets, or premature tightening are permitted below 0.8R.
+        if achieved_r < 0.8:
+            return TrailingResult(
+                new_stop=current_stop,
+                stop_moved=False,
+                trail_reason=f"Breathing Room Active (< 0.8R): Stop locked at invalidation (Peak: +{achieved_r:.2f}R)",
+                locked_r=0.0,
+                achieved_r=round(achieved_r, 2),
+                is_breakeven=False
+            )
+
+        # 2. Apex Milestone Ratchets (Cash-First & Runner Protection)
         locked_r = 0.0
         milestone_stop = current_stop
+        is_be = False
 
         if achieved_r >= 5.0:
             locked_r = 4.0
@@ -73,10 +89,11 @@ class TrailingStopEngine:
             milestone_stop = entry + (0.5 * risk) if direction == "LONG" else entry - (0.5 * risk)
         elif achieved_r >= 0.8:
             locked_r = 0.05  # Break-Even + Fee Buffer
-            fee_buf = max(0.05 * risk, entry * 0.0008)  # Guarantees >= 0.08% profit to cover Delta taker fee + spread
+            fee_buf = max(0.05 * risk, entry * 0.0008)  # Guarantees >= 0.08% profit to cover Delta fee + spread
             milestone_stop = (entry + fee_buf) if direction == "LONG" else (entry - fee_buf)
+            is_be = True
 
-        # 3. ATR Dynamic Trail (active once in >= 1.5R profit)
+        # 3. ATR Dynamic Trail (active once in >= 1.5R profit for runners)
         atr_buffer = max(1.5 * atr, entry * 0.0035)
         atr_stop = current_stop
         if achieved_r >= 1.5:
@@ -85,14 +102,16 @@ class TrailingStopEngine:
             else:
                 atr_stop = peak_favorable_price + atr_buffer
 
-        # 4. Structural 5M Swings (Higher Lows for LONG, Lower Highs for SHORT)
-        breathing_room = max(0.8 * atr, entry * 0.0040)
+        # 4. Structural Swings (Only for Runners >= 1.5R, using confirmed 15M or deep 5M structure)
+        # Banned for developing trades (< 1.5R) to prevent stop-outs on short-term liquidity sweeps.
+        breathing_room = max(1.0 * atr, entry * 0.0050)
         structural_stop = current_stop
         structural_reason = ""
 
-        if candles_5m and len(candles_5m) >= 5:
+        candles_for_swings = candles_15m if (candles_15m and len(candles_15m) >= 5) else (candles_5m if (candles_5m and len(candles_5m) >= 6) else None)
+        if achieved_r >= 1.5 and candles_for_swings:
             from structure.swings import find_swings
-            swings = find_swings(candles_5m, lookback=2, is_major=False)
+            swings = find_swings(candles_for_swings, lookback=2, is_major=False)
 
             if direction == "LONG":
                 # Confirmed swing lows above current stop and below current price
@@ -126,7 +145,6 @@ class TrailingStopEngine:
             if structural_stop > current_stop and structural_reason:
                 best_stop = structural_stop
                 reason = structural_reason
-                # If milestone offers even higher hard-locked R floor, take milestone
                 if milestone_stop > structural_stop:
                     best_stop = milestone_stop
                     reason = f"Ratchet: Locked {locked_r:.1f}R (Peak: +{achieved_r:.2f}R)"
@@ -151,12 +169,11 @@ class TrailingStopEngine:
                 best_stop = max_allowed_stop
 
             if best_stop > current_stop + (0.05 * risk):
-                return TrailingResult(round_price(symbol, best_stop), True, reason, locked_r, round(achieved_r, 2))
+                return TrailingResult(round_price(symbol, best_stop), True, reason, locked_r, round(achieved_r, 2), is_be)
         else:
             if structural_stop < current_stop and structural_reason:
                 best_stop = structural_stop
                 reason = structural_reason
-                # If milestone offers even lower hard-locked R floor, take milestone
                 if milestone_stop < structural_stop:
                     best_stop = milestone_stop
                     reason = f"Ratchet: Locked {locked_r:.1f}R (Peak: +{achieved_r:.2f}R)"
@@ -181,6 +198,6 @@ class TrailingStopEngine:
                 best_stop = min_allowed_stop
 
             if best_stop < current_stop - (0.05 * risk):
-                return TrailingResult(round_price(symbol, best_stop), True, reason, locked_r, round(achieved_r, 2))
+                return TrailingResult(round_price(symbol, best_stop), True, reason, locked_r, round(achieved_r, 2), is_be)
 
-        return TrailingResult(current_stop, False, "No trailing adjustment required", locked_r, round(achieved_r, 2))
+        return TrailingResult(current_stop, False, "No trailing adjustment required", locked_r, round(achieved_r, 2), is_be)
