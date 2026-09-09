@@ -8,3 +8,5 @@ s.no,coin,profit/loss,date,image,Reason
 7,btc,32,5/9/2026,trade_7_btc.png,trailing stop loss hit
 8,sol,98,6/9/2026,trade_8_sol.png,tp hit
 9,eth,-68,6/9/2026,trade_9_eth.png,stop loss hit
+10,xrp,-94,9/9/2026,trade_10_xrp.png,stop loss hit
+11,avax,-46,9/9/2026,trade_11_avax.png,premature bot trailing exit
