@@ -102,12 +102,16 @@ class TradeManager:
             old_loss = self.current_daily_loss
             self.current_daily_date = today_ist
             self.current_daily_loss = 0.0
+            # Restore standard daily loss budget (e.g. ₹300.00) on midnight rollover
+            standard_limit = getattr(settings, "DEFAULT_MAX_DAILY_LOSS", 300.0)
+            settings.MAX_DAILY_LOSS = standard_limit
             if self.db:
                 self.db.set_config("daily_loss_date", today_ist)
                 self.db.set_config("daily_loss_amount", "0.0")
+                self.db.set_config("max_daily_loss", str(standard_limit))
             logger.info(
                 f"🌅 11:59 PM IST Midnight Rollover: Daily loss reset from ₹{old_loss:.2f} to ₹0.00 "
-                f"for new trading day {today_ist}. Full ₹{settings.MAX_DAILY_LOSS:.2f} daily loss budget restored!"
+                f"for new trading day {today_ist}. Full ₹{standard_limit:.2f} daily loss budget restored!"
             )
             if self.telegram:
                 try:
@@ -115,7 +119,7 @@ class TradeManager:
                     loop.create_task(self.telegram.send_midnight_rollover_recap(
                         old_loss=old_loss,
                         new_date=today_ist,
-                        max_daily_loss=getattr(settings, "MAX_DAILY_LOSS", 300.0),
+                        max_daily_loss=standard_limit,
                         equity=getattr(settings, "ACCOUNT_EQUITY", 4140.0)
                     ))
                 except RuntimeError:
@@ -138,11 +142,20 @@ class TradeManager:
                 self.current_daily_loss = float(self.db.get_config("daily_loss_amount", "0.0"))
             except (ValueError, TypeError):
                 self.current_daily_loss = 0.0
+            saved_max = self.db.get_config("max_daily_loss", "")
+            if saved_max:
+                try:
+                    settings.MAX_DAILY_LOSS = float(saved_max)
+                except (ValueError, TypeError):
+                    pass
         else:
             self.current_daily_date = today_ist
             self.current_daily_loss = 0.0
+            standard_limit = getattr(settings, "DEFAULT_MAX_DAILY_LOSS", 300.0)
+            settings.MAX_DAILY_LOSS = standard_limit
             self.db.set_config("daily_loss_date", today_ist)
             self.db.set_config("daily_loss_amount", "0.0")
+            self.db.set_config("max_daily_loss", str(standard_limit))
 
         stored = self.db.get_active_trade()
         if stored:

@@ -58,3 +58,19 @@ def test_daily_loss_resets_on_restart_if_past_ist_midnight(tmp_path):
     tm = TradeManager(db=db)
     assert tm.current_daily_loss == 0.0
     assert db.get_config("daily_loss_amount") == "0.0"
+
+
+def test_daily_loss_limit_restores_to_300_on_midnight_rollover(tmp_path):
+    """Verifies that if MAX_DAILY_LOSS was temporarily lowered (e.g. 160), midnight rollover restores it to 300."""
+    db = Database(db_path=str(tmp_path / "test_restore_300.db"))
+    tm = TradeManager(db=db)
+
+    settings.MAX_DAILY_LOSS = 160.0
+    tm.current_daily_loss = 140.0
+    tm.current_daily_date = "2026-09-08"
+
+    rolled = tm.check_daily_loss_reset()
+    assert rolled is True
+    assert tm.current_daily_loss == 0.0
+    assert settings.MAX_DAILY_LOSS == 300.0
+    assert db.get_config("max_daily_loss") == "300.0"

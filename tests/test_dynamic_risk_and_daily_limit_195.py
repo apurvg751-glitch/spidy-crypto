@@ -2,8 +2,8 @@ import pytest
 from config.settings import settings
 from risk_engine.position_sizing import PositionSizer
 
-def test_daily_loss_limit_is_160():
-    assert settings.MAX_DAILY_LOSS == 160.0
+def test_daily_loss_limits_and_quota_floor():
+    assert settings.DEFAULT_MAX_DAILY_LOSS == 300.0
     assert settings.MIN_REMAINING_DAILY_LOSS_QUOTA == 60.0
 
 def test_dynamic_margin_scaling_full_conviction():
