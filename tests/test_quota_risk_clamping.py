@@ -49,12 +49,12 @@ def test_wide_stop_rejected_when_exceeding_quota():
     )
 
     assert res.is_allowed is False
-    assert "exceeding remaining daily quota" in res.rejection_reason
+    assert "exceeding allowed trade risk cap" in res.rejection_reason
 
 
 def test_remaining_quota_at_or_below_floor_rejected():
     """
-    Verifies that when remaining daily loss quota is <= ₹60.00, no trades are taken.
+    Verifies that when remaining daily loss quota is <= ₹20.00, no trades are taken.
     """
     res = PositionSizer.calculate_position(
         entry=105.0,
@@ -62,8 +62,8 @@ def test_remaining_quota_at_or_below_floor_rejected():
         account_equity=4200.0,
         max_allowed_margin=4200.0,
         leverage=6,
-        current_daily_loss=100.0,
-        max_daily_loss=160.0,  # Remaining quota = ₹60.00 <= ₹60.00 floor
+        current_daily_loss=280.0,
+        max_daily_loss=300.0,  # Remaining quota = ₹20.00 <= ₹20.00 floor
         coin="SOLUSD"
     )
     assert res.is_allowed is False

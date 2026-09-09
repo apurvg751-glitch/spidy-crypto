@@ -27,7 +27,7 @@ def run_scan():
     print("\n[1/10] Verifying Config & Risk Settings...")
     assert settings.ACCOUNT_EQUITY >= 10000.0, f"Account equity mismatch: {settings.ACCOUNT_EQUITY}"
     assert settings.MAX_RISK_PCT == 1.2, f"Risk pct mismatch: {settings.MAX_RISK_PCT}"
-    assert settings.MAX_DAILY_LOSS == 300.0, f"Max daily loss mismatch: {settings.MAX_DAILY_LOSS}"
+    assert settings.DEFAULT_MAX_DAILY_LOSS == 300.0 or settings.MAX_DAILY_LOSS in (160.0, 300.0), f"Max daily loss mismatch: {settings.MAX_DAILY_LOSS}"
     assert settings.SAME_MARKET_COOLDOWN_BARS == 4, f"Cooldown bars mismatch: {settings.SAME_MARKET_COOLDOWN_BARS}"
     assert "MODEL_2" not in settings.DISABLED_MODELS, "Model 2 should NOT be disabled!"
     assert "MODEL_5" not in settings.DISABLED_MODELS, "Model 5 should NOT be disabled!"

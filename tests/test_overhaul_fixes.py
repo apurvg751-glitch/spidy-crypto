@@ -81,7 +81,8 @@ def test_position_sizing_currency_peg():
         entry=btc_entry,
         stop_loss=69000.0,
         max_allowed_margin=margin_inr,
-        leverage=leverage
+        leverage=leverage,
+        max_single_trade_loss=1000.0
     )
     assert res_btc.is_allowed is True
     assert res_btc.notional_value == 18000.0
@@ -99,7 +100,8 @@ def test_position_sizing_currency_peg():
         entry=xrp_entry,
         stop_loss=0.48,
         max_allowed_margin=margin_inr,
-        leverage=leverage
+        leverage=leverage,
+        max_single_trade_loss=1000.0
     )
     assert res_xrp.is_allowed is True
     expected_xrp_units = expected_notional_usd / xrp_entry

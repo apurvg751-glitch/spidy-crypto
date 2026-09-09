@@ -4,17 +4,19 @@ from risk_engine.position_sizing import PositionSizer
 
 def test_daily_loss_limits_and_quota_floor():
     assert settings.DEFAULT_MAX_DAILY_LOSS == 300.0
-    assert settings.MIN_REMAINING_DAILY_LOSS_QUOTA == 60.0
+    assert settings.MIN_REMAINING_DAILY_LOSS_QUOTA == 20.0
+    assert settings.MAX_TRADE_LOSS == 125.0
 
 def test_dynamic_margin_scaling_full_conviction():
-    # Setup with RR >= 2.0 gets full 100% margin (Rs. 4,200)
+    # Setup with RR >= 2.0 gets full 100% margin (Rs. 4,200) when not constrained by trade cap
     res = PositionSizer.calculate_position(
         entry=100.0,
         stop_loss=98.0,
         account_equity=4200.0,
         max_allowed_margin=4200.0,
         leverage=6,
-        target_rr=2.2
+        target_rr=2.2,
+        max_single_trade_loss=1000.0
     )
     assert res.is_allowed is True
     assert res.required_margin == 4200.0
@@ -27,36 +29,49 @@ def test_dynamic_margin_scaling_lower_swing_high():
         account_equity=4200.0,
         max_allowed_margin=4200.0,
         leverage=6,
-        target_rr=1.8
+        target_rr=1.8,
+        max_single_trade_loss=1000.0
     )
     assert res.is_allowed is True
     # 1.8 / 2.0 = 0.90 -> 4200 * 0.90 = 3780.0
     assert res.required_margin == 3780.0
     assert res.required_margin < 4200.0
 
-def test_daily_loss_enforcement_at_160():
+def test_max_single_trade_loss_cap_at_125():
+    # Setup with wide stop gets clamped to <= Rs 125 max trade loss
     res = PositionSizer.calculate_position(
         entry=100.0,
         stop_loss=98.0,
         account_equity=4200.0,
         max_allowed_margin=4200.0,
-        current_daily_loss=160.0,
-        max_daily_loss=160.0
+        leverage=6
+    )
+    assert res.is_allowed is True
+    assert res.risk_amount <= 125.01
+
+def test_daily_loss_enforcement_at_300():
+    res = PositionSizer.calculate_position(
+        entry=100.0,
+        stop_loss=98.0,
+        account_equity=4200.0,
+        max_allowed_margin=4200.0,
+        current_daily_loss=300.0,
+        max_daily_loss=300.0
     )
     assert res.is_allowed is False
     assert 'Max daily loss reached' in res.rejection_reason
 
-def test_remaining_quota_floor_at_60():
-    # If daily loss is 105.0 on a 160 budget, remaining quota is 55.0 (<= 60 threshold) -> trade blocked!
+def test_remaining_quota_floor_at_20():
+    # If daily loss is 285.0 on a 300 budget, remaining quota is 15.0 (<= 20 threshold) -> trade blocked!
     res = PositionSizer.calculate_position(
         entry=100.0,
         stop_loss=98.0,
         account_equity=4200.0,
         max_allowed_margin=4200.0,
-        current_daily_loss=105.0,
-        max_daily_loss=160.0
+        current_daily_loss=285.0,
+        max_daily_loss=300.0
     )
     assert res.is_allowed is False
     assert 'Insufficient remaining daily loss quota' in res.rejection_reason
-    assert '60.00' in res.rejection_reason
+    assert '20.00' in res.rejection_reason
 

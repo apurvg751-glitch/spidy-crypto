@@ -14,7 +14,8 @@ def test_dynamic_margin_at_full_band_4500():
         leverage=6,
         current_daily_loss=0.0,
         max_daily_loss=201.0,
-        coin="SOLUSD"
+        coin="SOLUSD",
+        max_single_trade_loss=500.0
     )
 
     assert res.is_allowed is True
@@ -33,7 +34,8 @@ def test_dynamic_margin_within_band_3800():
         leverage=6,
         current_daily_loss=0.0,
         max_daily_loss=201.0,
-        coin="SOLUSD"
+        coin="SOLUSD",
+        max_single_trade_loss=500.0
     )
 
     assert res.is_allowed is True
@@ -52,7 +54,8 @@ def test_dynamic_margin_at_lower_boundary_3000():
         leverage=6,
         current_daily_loss=0.0,
         max_daily_loss=201.0,
-        coin="SOLUSD"
+        coin="SOLUSD",
+        max_single_trade_loss=500.0
     )
 
     assert res.is_allowed is True

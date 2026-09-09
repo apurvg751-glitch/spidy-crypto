@@ -89,14 +89,12 @@ async def test_hybrid_market_entry_execution(temp_db):
 
     await tm._submit_live_order(setup_mock, pv_mock)
 
-    # Verify Limit Maker order placed immediately with bracket parameters (atomic maker execution)
+    # Verify Market order placed immediately with bracket parameters (instant fill, limit TP, stop SL)
     tm.delta_execution.place_order.assert_called_once_with(
         symbol="SOLUSD",
         side="buy",
-        order_type="limit_order",
-        limit_price=105.50,
+        order_type="market_order",
         size=2,
-        post_only=True,
         bracket_stop_loss_price=105.20,
         bracket_take_profit_price=106.50
     )
@@ -260,12 +258,12 @@ async def test_waiting_limit_order_cancelled_on_runaway(temp_db):
 
 
 @pytest.mark.asyncio
-async def test_maker_order_refuses_market_taker_fallback(temp_db):
-    """Verifies that a failed Limit Maker order NEVER executes a market taker order."""
+async def test_market_order_submits_with_brackets(temp_db):
+    """Verifies that market entry executes with even-lot contract sizing and bracket SL/TP."""
     from trade_manager.manager import TradeManager
     tm = TradeManager(db=temp_db)
     tm.delta_execution = AsyncMock()
-    tm.delta_execution.place_order.return_value = {"success": False, "error": "PostOnly would cross book"}
+    tm.delta_execution.place_order.return_value = {"success": False, "error": "Insufficient margin"}
 
     setup_mock = MagicMock()
     setup_mock.coin = "AVAXUSD"
@@ -279,15 +277,13 @@ async def test_maker_order_refuses_market_taker_fallback(temp_db):
 
     await tm._submit_live_order(setup_mock, pv_mock)
 
-    # Must be called once with limit_order post_only=True and size=28 (rounded even), never market_order
+    # Must be called once with market_order and size=28 (rounded even)
     assert tm.delta_execution.place_order.call_count == 1
     tm.delta_execution.place_order.assert_called_once_with(
         symbol="AVAXUSD",
         side="buy",
-        order_type="limit_order",
-        limit_price=7.92,
+        order_type="market_order",
         size=28,  # 29 rounded to even 28 for clean 50% TP
-        post_only=True,
         bracket_stop_loss_price=7.88,
         bracket_take_profit_price=7.98
     )

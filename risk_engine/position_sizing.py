@@ -45,7 +45,8 @@ class PositionSizer:
         grade: Optional[str] = None,
         coin: Optional[str] = None,
         min_allowed_margin: Optional[float] = None,
-        min_remaining_quota: Optional[float] = None
+        min_remaining_quota: Optional[float] = None,
+        max_single_trade_loss: Optional[float] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
@@ -63,7 +64,7 @@ class PositionSizer:
                 rejection_reason=f"Account equity (₹{equity:,.2f}) is below minimum allowed margin threshold of ₹{min_margin:,.2f}"
             )
 
-        # 2. Daily Loss Guard & Quota Clamping (Halt if remaining quota <= 60 threshold)
+        # 2. Daily Loss Guard & Quota Clamping (Halt if remaining quota <= 20 threshold)
         daily_limit = max_daily_loss if max_daily_loss is not None else (settings.MAX_DAILY_LOSS if getattr(settings, "ENABLE_DAILY_LOSS_LIMIT", False) else None)
         if daily_limit is not None and current_daily_loss >= daily_limit:
             return PositionSizeResult(
@@ -71,7 +72,7 @@ class PositionSizer:
                 rejection_reason=f"Max daily loss reached ({current_daily_loss:.2f} >= {daily_limit:.2f})"
             )
 
-        quota_floor = min_remaining_quota if min_remaining_quota is not None else getattr(settings, "MIN_REMAINING_DAILY_LOSS_QUOTA", 60.0)
+        quota_floor = min_remaining_quota if min_remaining_quota is not None else getattr(settings, "MIN_REMAINING_DAILY_LOSS_QUOTA", 20.0)
         remaining_quota = max(0.0, daily_limit - current_daily_loss) if daily_limit is not None else None
         if remaining_quota is not None and remaining_quota <= quota_floor:
             return PositionSizeResult(
@@ -130,11 +131,16 @@ class PositionSizer:
         units = notional_usd / entry
         risk_amount = (units * stop_dist) * usd_rate
 
-        # Dynamic Quota Clamping:
-        # When an intraday loss has already been incurred (current_daily_loss > 0),
-        # strictly clamp the subsequent trade's risk to the remaining daily quota.
-        if remaining_quota is not None and current_daily_loss > 0 and risk_amount > remaining_quota:
-            max_units_by_quota = (remaining_quota / usd_rate) / stop_dist
+        # Max Single Trade Loss & Dynamic Quota Clamping:
+        # Strictly caps per-trade risk at ₹125.00 (or remaining daily quota, whichever is tighter).
+        trade_risk_cap = max_single_trade_loss if max_single_trade_loss is not None else getattr(settings, "MAX_TRADE_LOSS", 125.0)
+        if remaining_quota is not None and current_daily_loss > 0:
+            effective_risk_cap = min(trade_risk_cap, remaining_quota)
+        else:
+            effective_risk_cap = trade_risk_cap
+
+        if risk_amount > effective_risk_cap:
+            max_units_by_cap = (effective_risk_cap / usd_rate) / stop_dist
 
             # Minimum contract units guard based on asset specifications
             min_units = 0.001
@@ -151,14 +157,14 @@ class PositionSizer:
                 elif "AVAX" in sym_clean:
                     min_units = 0.5
 
-            if max_units_by_quota < min_units:
+            if max_units_by_cap < min_units:
                 min_risk = (min_units * stop_dist) * usd_rate
                 return PositionSizeResult(
                     is_allowed=False,
-                    rejection_reason=f"Structural stop distance ({stop_dist:.4f}) requires ₹{min_risk:.2f} minimum risk, exceeding remaining daily quota of ₹{remaining_quota:.2f}"
+                    rejection_reason=f"Structural stop distance ({stop_dist:.4f}) requires ₹{min_risk:.2f} minimum risk, exceeding allowed trade risk cap of ₹{effective_risk_cap:.2f}"
                 )
 
-            units = max_units_by_quota
+            units = max_units_by_cap
             notional_usd = units * entry
             notional = notional_usd * usd_rate
             required_margin = round(notional / lev, 2)

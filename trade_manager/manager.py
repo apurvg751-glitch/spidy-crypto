@@ -539,19 +539,17 @@ class TradeManager:
             else:
                 size = max(1, int(round(raw_contracts)))
 
-            logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} LIMIT Maker entry: size={size} contracts @ {setup.entry}")
+            logger.info(f"🚀 [DELTA LIVE HYBRID] Executing {setup.coin} {side.upper()} MARKET entry: size={size} contracts")
             res = await self.delta_execution.place_order(
                 symbol=setup.coin,
                 side=side,
-                order_type="limit_order",
-                limit_price=setup.entry,
+                order_type="market_order",
                 size=size,
-                post_only=True,
                 bracket_stop_loss_price=setup.stop_loss,
                 bracket_take_profit_price=setup.target_1
             )
             if not res.get("success"):
-                logger.warning(f"Limit Maker entry could not post ({res.get('error')}). Refusing market taker fallback to prevent fee drain.")
+                logger.warning(f"Market entry failed on Delta India: {res.get('error')}")
                 return
             if res.get("success"):
                 order_data = res.get("order", {})
