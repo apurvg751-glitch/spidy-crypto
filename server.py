@@ -324,6 +324,16 @@ async def api_status():
     return get_system_status()
 
 
+@app.get("/api/set_daily_loss_limit")
+@app.post("/api/set_daily_loss_limit")
+async def api_set_daily_loss_limit(limit: float = 160.0):
+    """Dynamically updates the daily loss limit and persists to SQLite database."""
+    if trade_manager:
+        msg = trade_manager.set_max_daily_loss(limit)
+        return {"status": "success", "message": msg, "max_daily_loss": limit}
+    return {"status": "error", "message": "TradeManager not initialized"}
+
+
 @app.get("/api/cloud_ip")
 async def get_cloud_ip():
     """Returns the public outbound IP of this running server (useful for Delta API IP whitelisting)."""

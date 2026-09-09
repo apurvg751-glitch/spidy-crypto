@@ -145,17 +145,22 @@ class TradeManager:
             saved_max = self.db.get_config("max_daily_loss", "")
             if saved_max:
                 try:
-                    settings.MAX_DAILY_LOSS = float(saved_max)
+                    env_max = float(getattr(settings, "MAX_DAILY_LOSS", 160.0))
+                    if env_max != 300.0:
+                        settings.MAX_DAILY_LOSS = env_max
+                        self.db.set_config("max_daily_loss", str(env_max))
+                    else:
+                        settings.MAX_DAILY_LOSS = float(saved_max)
                 except (ValueError, TypeError):
                     pass
         else:
             self.current_daily_date = today_ist
             self.current_daily_loss = 0.0
-            standard_limit = getattr(settings, "DEFAULT_MAX_DAILY_LOSS", 300.0)
-            settings.MAX_DAILY_LOSS = standard_limit
+            cur_limit = getattr(settings, "MAX_DAILY_LOSS", 160.0)
+            settings.MAX_DAILY_LOSS = cur_limit
             self.db.set_config("daily_loss_date", today_ist)
             self.db.set_config("daily_loss_amount", "0.0")
-            self.db.set_config("max_daily_loss", str(standard_limit))
+            self.db.set_config("max_daily_loss", str(cur_limit))
 
         stored = self.db.get_active_trade()
         if stored:
@@ -184,6 +189,19 @@ class TradeManager:
         self._notify_state_change()
         logger.info("Spidy Bot trading RESUMED by user.")
         return "Trading resumed. Bot is actively scanning and eligible to trade."
+
+    def set_max_daily_loss(self, limit: float) -> str:
+        """Updates maximum daily loss limit dynamically and persists to SQLite database."""
+        limit = round(float(limit), 2)
+        settings.MAX_DAILY_LOSS = limit
+        if self.db:
+            from datetime import datetime
+            today_ist = datetime.now(self.ist_tz).strftime("%Y-%m-%d")
+            self.db.set_config("daily_loss_date", today_ist)
+            self.db.set_config("max_daily_loss", str(limit))
+        self._notify_state_change()
+        logger.info(f"🛡️ Updated Max Daily Loss limit to ₹{limit:.2f}")
+        return f"Max Daily Loss limit updated to ₹{limit:.2f}"
 
     async def process_candidates(
         self,

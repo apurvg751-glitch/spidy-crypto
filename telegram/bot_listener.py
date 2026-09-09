@@ -186,6 +186,41 @@ class TelegramBotListener:
                         chat_id,
                         reply_markup=get_hud_inline_keyboard()
                     )
+            elif text.startswith("/setlimit") or text.startswith("setlimit") or text.startswith("/limit") or text.startswith("limit") or text.startswith("/setmaxloss") or text.startswith("setmaxloss"):
+                parts = raw_text.split()
+                if len(parts) > 1:
+                    try:
+                        amt = float(parts[1].replace("₹", "").replace("$", "").replace(",", "").strip())
+                        self.trade_manager.set_max_daily_loss(amt)
+                        cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
+                        rem = max(0.0, amt - cur_loss)
+                        if cur_loss >= amt:
+                            self.trade_manager.is_paused = True
+                            self.trade_manager.global_status = "STOPPED"
+                        await self._send_reply(
+                            f"🛡️ *MAX DAILY LOSS LIMIT UPDATED*\n\n"
+                            f"• Max Daily Limit: *₹{amt:,.2f}*\n"
+                            f"• Incurred Loss Today: *₹{cur_loss:,.2f}*\n"
+                            f"• Remaining Budget: *₹{rem:,.2f}* {'🟢 SAFE' if rem > 50 else ('🟡 TIGHT' if rem > 0 else '🔴 EXHAUSTED')}\n\n"
+                            f"Telegram HUD will now reflect ₹{amt:,.2f} Daily Loss Limit!",
+                            chat_id,
+                            reply_markup=get_hud_inline_keyboard()
+                        )
+                    except ValueError:
+                        await self._send_reply("⚠️ Invalid amount format. Usage: `/setlimit 160` or `/limit 160`", chat_id)
+                else:
+                    cur_loss = getattr(self.trade_manager, "current_daily_loss", 0.0)
+                    max_dl = getattr(settings, "MAX_DAILY_LOSS", 160.0)
+                    rem = max(0.0, max_dl - cur_loss)
+                    await self._send_reply(
+                        f"🛡️ *CURRENT DAILY RISK LIMIT*\n\n"
+                        f"• Max Daily Limit: *₹{max_dl:,.2f}*\n"
+                        f"• Incurred Loss Today: *₹{cur_loss:,.2f}*\n"
+                        f"• Remaining Budget: *₹{rem:,.2f}*\n\n"
+                        f"To change your daily limit, type: `/setlimit <amount>` (e.g. `/setlimit 160`)",
+                        chat_id,
+                        reply_markup=get_hud_inline_keyboard()
+                    )
             elif text in ("/balance", "balance", "/margin", "margin", "/wallet", "wallet"):
                 await self._send_balance_reply(chat_id)
             elif text in ("/start", "start", "/resume", "resume", "/poweron", "poweron"):
