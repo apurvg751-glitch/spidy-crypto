@@ -1,77 +1,86 @@
 # 🕷️ SPIDY CRYPTO — INSTITUTIONAL MASTER TRADE JOURNAL
 
 **Trader:** Apurv Gupta  
-**System:** SPIDY CRYPTO 2.0 (Autonomous Trading Intelligence)  
+**System:** SPIDY CRYPTO 2.0 (Institutional Intelligence)  
 **Exchange:** Delta Exchange India  
 **Allocated Margin:** ₹4,200.00  
-**Position Size (Notional):** ₹25,200.00  
 **Leverage:** 6x Leverage  
-**Risk per Trade:** Evaluated on ₹4,200 Margin (1.50% / ₹63.00 / 1R)  
+**Autonomous Live Execution:** 🔴 PERMANENTLY DISABLED (100% Manual Execution)  
 
 ---
 
-## 📊 Executive Portfolio Summary
+## 📊 Executive Portfolio Summary (Delta Exchange India)
 
-| Metric | Current Value | Institutional Target | Status |
+| Metric | Current Value | Delta Exchange Source | Status |
 | :--- | :---: | :---: | :---: |
-| **Total Realized PnL** | **+₹425.00** | Positive Compounding | 🟢 Profitable |
-| **Total R-Multiple** | **+0.77R** | > +2.0R / week | 🟢 On Track |
-| **Win Rate** | **100.0%** (2/2 Wins) | > 65% | 💎 Institutional Elite |
-| **Completed Trades** | 2 Wins, 0 Losses | Strict Discipline | 🟢 Clean |
-| **Max Drawdown** | ₹0.00 (0.0%) | < 5.0% | 🛡️ Flawless Risk Control |
-| **Execution Discipline** | **Grade A+** | Grade A+ | 🏆 100% Rule Adherent |
+| **Gross Realized PnL** | **-₹230.80** | PnL Analytics (5 Trades) | 🔴 Drawdown |
+| **Exchange Fees Paid** | **-₹81.74** | Fee Ledger (35% of Drawdown) | ⚠️ Taker Fee Drain |
+| **Net Total Drawdown** | **-₹312.54** | Total Portfolio Net | 🛡️ Controlled |
+| **Win Rate** | **40.0%** (2 Wins / 3 Losses) | Official Analytics | 🟡 Recoverable |
+| **Average Win** | **₹25.66** | Scalped / Choked | ⚠️ Needs Expansion |
+| **Average Loss** | **-₹94.04** | Standard 1.0R Stop | 🛡️ Risk Capped |
+| **Today's Closed PnL (09-09)** | **-₹139.68** | XRPUSD + AVAXUSD | 🔴 Day Closed |
 
 ---
 
-## 📈 Detailed Trade Log
+## 📈 Detailed Trade Log & Case Studies
 
-### Trade #2: AVAXUSD — Liquidity Sweep & Momentum Long 🔒
-* **Date & Time:** September 5, 2026 (18:13 IST)
-* **Coin / Pair:** `AVAXUSD` (Delta Exchange India)
+### Trade #11: AVAXUSD — Model 8 Liquidity Sweep Reversal 📉
+* **Date & Time:** September 9, 2026 (16:10 IST)
+* **Coin / Pair:** AVAXUSD (Delta Exchange India)
 * **Direction:** **LONG** 🟢
-* **Model:** `Model 8: Liquidity Sweep Reversal`
-* **Confluence:** 15M Demand Zone + Order Flow Absorption + Bear Trap Sweep
-* **Entry Price:** `$7.508`
-* **Original Stop Loss:** `$7.450` (Risk Distance: `$0.058` / 0.77%)
-* **Peak Surge:** `$7.556+` (**+0.83R Peak Favorable Excursion**)
-* **Target 1:** `$7.612` (1.8R)
-* **Target 2:** `$7.653` (2.5R)
-* **Exit Price / Stop Ratchet:** **`$7.511`** (Stop Loss automatically ratcheted above entry!)
-* **Exit Reason:** Trailing Stop Loss Hit (Profit Secured 🔒)
-* **Achieved R-Multiple:** **`+0.10R`** (Peak: `+0.83R`)
-* **Realized Profit (₹):** **`+₹75.00`** 💰
-* **Status:** **✅ [WIN - PROFIT SECURED] (COMPLETED)**
-* **Key Takeaway:** Survived 3.2 hours of horizontal chop near entry; exploded straight up into +0.83R; automated trailing ratchet dragged Stop Loss from $7.450 to $7.511, guaranteeing zero-risk green exit!
+* **Model:** Model 8: Liquidity Sweep Reversal
+* **Confluence:** 15M Demand Zone + Lower Wick Absorption + Key Sweep
+* **Delta Fill Entry:** **$7.9264** (29 Contracts / .22 Notional)
+* **Original Stop Loss:** **$7.8880** (Risk Distance: $0.0384 / -.05 USD max risk)
+* **Target 1:** **$7.9580** (+0.8R Breakeven line) / **$7.9918** (+1.7R TP1)
+* **Peak Market High:** **$7.9528** (**+0.70R move directly into blue target line!**)
+* **Exit Price:** **$7.9100** (Premature Bot Trailing Stop Exit)
+* **Realized Loss:** **-₹46.00 INR** (-.48 USD)
+* **Fees Paid:** **-₹13.80 INR**
+* **Chart Proof & Case Study:** [trade_11_avax.png](file:///C:/Users/admin/.gemini/antigravity/scratch/spidy_crypto/trade_11_avax.png) | [AVAX_Trade_Case_Study.xlsx](file:///C:/Users/admin/.gemini/antigravity/scratch/spidy_crypto/AVAX_Trade_Case_Study.xlsx)
+* **Post-Mortem & Diagnostic:** Setup was 100% structurally accurate. After entry, price dipped to .898, perfectly respected the .888 stop loss, printed massive lower wicks, and exploded to .9528. However, Spidy's autonomous trailing stop ratcheted prematurely to .910 on 5M wicks and market-closed the position. 
+* **Action Taken:** Breathing Room Guard (< 0.8R) deployed; autonomous live execution permanently disabled.
 
 ---
 
-### Trade #1: XRPUSD — Institutional Sniper Long 🚀
-* **Date & Time:** September 3, 2026
-* **Coin / Pair:** `XRPUSD` (Delta Exchange India)
+### Trade #10: XRPUSD — Model 10 Institutional Sniper 🛑
+* **Date & Time:** September 9, 2026
+* **Coin / Pair:** XRPUSD (Delta Exchange India)
 * **Direction:** **LONG** 🟢
-* **Model:** `Model 10: Institutional Sniper ⭐ (100% Confluence)`
-* **Confluence:** 4H Bullish Flow + 1H Equilibrium + 15M Discount Sweep + MSS Displacement
-* **Entry Price:** `$1.4517`
-* **Stop Loss:** `$1.4401` (Risk Distance: `$0.0116` / 0.80%)
-* **Target 1:** `$1.4725` (1.8R)
-* **Target 2:** `$1.4807` (2.5R)
-* **Exit Price:** **`~$1.4595`**
-* **Exit Reason:** Manually secured in profit via Telegram / Dashboard
-* **Achieved R-Multiple:** **`+0.67R`**
-* **Realized Profit (₹):** **`+₹350.00`** 💰
-* **Account Gain %:** **`+1.00%`**
-* **Status:** **✅ [WIN] (COMPLETED)**
+* **Model:** Model 10: Institutional Sniper
+* **Entry Price:** **$1.4517**
+* **Stop Loss:** **$1.4401**
+* **Target 1:** **$1.4725**
+* **Exit Price:** **$1.4401**
+* **Outcome Status:** **LOSS (Stop Loss Hit)**
+* **Realized Loss:** **-₹93.68 INR** (-1.00R)
+* **Key Takeaway:** Normal disciplined stop loss execution on broader crypto morning pullback.
 
 ---
 
-## 🛡️ Risk Management & Discipline Audit
-
-* **Revenge Trading Guard:** **0 Violations**. The 1-trade global lock strictly prevented multi-position over-exposure.
-* **Capital Preservation:** No trade exceeded the 1.5% maximum risk boundary on ₹3,000 margin.
-* **Re-entry Gatekeeper:** Post-trade cooldown enforced on all markets to prevent impulsive re-entries.
-* **Trailing Engine:** 100% automated milestone ratchet proved itself by locking in profit above entry on AVAXUSD.
-* **Automated +1.0R Rule:** 40% partial profit lock armed for next trades.
+### Trade #1: ETHUSD — Model 10 Institutional Sniper ⭐
+* **Date & Time:** September 8, 2026 (12:00 IST)
+* **Coin / Pair:** ETHUSD (Delta Exchange India)
+* **Direction:** **LONG** 🟢
+* **Model:** Model 10: Institutional Sniper ⭐
+* **Delta Fill Entry:** **$2,466.20** (9.38 ETH Contracts)
+* **Stop Loss:** **$2,453.87** (-1.0R)
+* **Peak High Reached:** **$2,486.10** (+1.61R)
+* **Target 1:** **$2,488.39** (+1.8R)
+* **Exit Price:** **$2,478.00 (50% TP1) / $2,468.15 (BE Trailing SL)**
+* **Outcome Status:** **✅ WIN (50% TP1 + Trailing BE)**
+* **Realized Profit:** **+₹35.99 Net** (+₹57.99 Gross, -₹22.00 Fees)
+* **Case Study:** [ETH_Trade_Case_Study.xlsx](file:///C:/Users/admin/.gemini/antigravity/scratch/spidy_crypto/ETH_Trade_Case_Study.xlsx)
 
 ---
 
-*Last Updated: 2026-09-05 21:05 IST | Auto-Synchronized with SQLite Database & Telegram Bot*
+## 🛡️ Permanent Risk & Execution Safeguards Deployed
+
+1. **Autonomous Live Execution OFF**: All trades, entries, and exits must be executed manually by the trader.
+2. **Breathing Room Guard (< 0.8R)**: Stop losses are strictly locked at original invalidation levels. Trailing stops cannot move on short-term noise.
+3. **5-Minute Wick Trailing Abolished**: Trailing on swings is restricted to confirmed runners (>= 1.5R) on 15M/1H candles.
+4. **Maker Limit Orders Only**: Entries and targets utilize post_only=True to lock in Delta's 0.02% maker rate and end the ₹81 fee drain.
+
+---
+*Last Synchronized: September 9, 2026 | Auto-Validated against Delta Exchange India Ledger*
