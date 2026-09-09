@@ -2,6 +2,7 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from config.settings import settings
 from risk_engine.risk_calculator import RiskEngine
 from structure.target_snapper import TargetSnapper
 from structure.trailing_engine import TrailingStopEngine
@@ -195,4 +196,4 @@ async def test_midnight_rollover_telegram_dispatch(tmp_path):
     tm.telegram.send_midnight_rollover_recap.assert_called_once()
     args = tm.telegram.send_midnight_rollover_recap.call_args[1]
     assert args["old_loss"] == 141.0
-    assert args["max_daily_loss"] == 300.0
+    assert args["max_daily_loss"] == getattr(settings, "MAX_DAILY_LOSS", 160.0)

@@ -44,7 +44,8 @@ class PositionSizer:
         target_rr: Optional[float] = None,
         grade: Optional[str] = None,
         coin: Optional[str] = None,
-        min_allowed_margin: Optional[float] = None
+        min_allowed_margin: Optional[float] = None,
+        min_remaining_quota: Optional[float] = None
     ) -> PositionSizeResult:
         equity = account_equity or settings.ACCOUNT_EQUITY
         risk_pct = max_risk_pct or settings.MAX_RISK_PCT
@@ -62,7 +63,7 @@ class PositionSizer:
                 rejection_reason=f"Account equity (₹{equity:,.2f}) is below minimum allowed margin threshold of ₹{min_margin:,.2f}"
             )
 
-        # 2. Daily Loss Guard & Quota Clamping
+        # 2. Daily Loss Guard & Quota Clamping (Halt if remaining quota <= 60 threshold)
         daily_limit = max_daily_loss if max_daily_loss is not None else (settings.MAX_DAILY_LOSS if getattr(settings, "ENABLE_DAILY_LOSS_LIMIT", False) else None)
         if daily_limit is not None and current_daily_loss >= daily_limit:
             return PositionSizeResult(
@@ -70,11 +71,12 @@ class PositionSizer:
                 rejection_reason=f"Max daily loss reached ({current_daily_loss:.2f} >= {daily_limit:.2f})"
             )
 
+        quota_floor = min_remaining_quota if min_remaining_quota is not None else getattr(settings, "MIN_REMAINING_DAILY_LOSS_QUOTA", 60.0)
         remaining_quota = max(0.0, daily_limit - current_daily_loss) if daily_limit is not None else None
-        if remaining_quota is not None and remaining_quota <= 5.0:
+        if remaining_quota is not None and remaining_quota <= quota_floor:
             return PositionSizeResult(
                 is_allowed=False,
-                rejection_reason=f"Insufficient remaining daily loss quota (₹{remaining_quota:.2f} <= ₹5.00)"
+                rejection_reason=f"Insufficient remaining daily loss quota (₹{remaining_quota:.2f} <= ₹{quota_floor:.2f} threshold). Trading halted to protect capital."
             )
 
         # 3. Consecutive Losses Guard (Disabled per user configuration)

@@ -82,6 +82,7 @@
 3. **5-Minute Wick Trailing Abolished**: Trailing on swings is restricted to confirmed runners (>= 1.5R) on 15M/1H candles.
 4. **Maker Limit Orders Only**: Entries and targets utilize post_only=True to lock in Delta's 0.02% maker rate and end the ₹81 fee drain.
 5. **Structural Breathing Room Stop Rule (Bull Lower / Bear Higher)**: Initial Stop Losses are never planted flush against the wick. For **BULL (LONG)** setups, the stop is planted **lower** than the swing low by a breathing cushion (`max(0.35 * ATR, 0.15% notional)`). For **BEAR (SHORT)** setups, the stop is planted **higher** than the swing high by the same cushion. This prevents stop-hunts on normal liquidity sweeps and gives trades full breathing room while you are in school.
+6. **Strict ₹160 Daily Loss Limit & ₹60 Quota Floor**: Daily loss limit is lowered from ₹300 to ₹160.00. If remaining daily loss quota reaches $\le ₹60.00$ (or if a trade's minimum structural risk would breach the remaining limit), the risk engine strictly halts all new trade entries to guarantee capital protection.
 
 ---
 *Last Synchronized: September 9, 2026 | Auto-Validated against Delta Exchange India Ledger*

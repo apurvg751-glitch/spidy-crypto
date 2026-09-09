@@ -80,8 +80,8 @@ def test_dynamic_margin_below_floor_rejected():
 
 def test_dynamic_margin_combined_with_quota_clamping():
     """
-    Verifies that when equity is in the allowed band (₹4,400) but an intraday loss of ₹141 has occurred,
-    risk is clamped to <= ₹60.00 while maintaining margin feasibility.
+    Verifies that when equity is in the allowed band (₹4,400) but an intraday loss of ₹80 has occurred,
+    risk is clamped to <= ₹80.00 while maintaining margin feasibility.
     """
     res = PositionSizer.calculate_position(
         entry=105.0,
@@ -90,11 +90,11 @@ def test_dynamic_margin_combined_with_quota_clamping():
         max_allowed_margin=4500.0,
         min_allowed_margin=3000.0,
         leverage=6,
-        current_daily_loss=141.0,
-        max_daily_loss=201.0,  # Remaining quota = ₹60.00
+        current_daily_loss=80.0,
+        max_daily_loss=160.0,  # Remaining quota = ₹80.00 (> ₹60.00 floor)
         coin="SOLUSD"
     )
 
     assert res.is_allowed is True
-    assert res.risk_amount <= 60.0
+    assert res.risk_amount <= 80.0
     assert res.required_margin <= 4400.0

@@ -35,7 +35,7 @@ def test_daily_loss_and_consecutive_losses_guard():
     res_consec_allowed = PositionSizer.calculate_position(
         entry=2400.0,
         stop_loss=2380.0,
-        current_daily_loss=100.0,
+        current_daily_loss=50.0,
         consecutive_losses=5
     )
     assert res_consec_allowed.is_allowed is True
